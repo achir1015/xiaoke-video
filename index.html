@@ -1,0 +1,1560 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}img{max-width:100%}</style>
+</head>
+<body>
+<title>小柯影音剪輯助手</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=LXGW+WenKai+TC:wght@700&family=Noto+Sans+TC:wght@400;500;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* 版面概念：像一張剪輯桌——上方是監看螢幕，左邊素材箱，右邊屬性與小柯助手，底部是整條時間軸 */
+:root{
+  color-scheme: dark;
+  --bg:#111417;        /* 石墨底，帶一點藍 */
+  --panel:#181c20;
+  --panel2:#20252a;
+  --line:#2b3138;
+  --fg:#e4e7ea;
+  --muted:#8a939c;
+  --accent:#f0a83a;    /* 鎢絲燈琥珀色：播放頭、主要按鈕 */
+  --accent-ink:#1b1306;
+  --v:#3a78ad;         /* 影像片段 */
+  --g:#a8613f;         /* 內建素材（產生器） */
+  --a:#3b9372;         /* 音訊片段 */
+  --t:#8e6cc4;         /* 字幕／文字 */
+  --danger:#e05a4f;
+  --ok:#5cb87a;
+  --f-ui:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --f-logo:"LXGW WenKai TC","Noto Sans TC","PingFang TC",serif;
+  --f-mono:"JetBrains Mono",ui-monospace,"SF Mono",Menlo,monospace;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);font-size:13px;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0;box-sizing:border-box;overflow:hidden}
+*{box-sizing:border-box}
+button,input,select,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+
+.app{height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) minmax(230px,36%);gap:8px;padding-block:8px}
+
+/* 頂列 */
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.logo{display:flex;align-items:center;gap:10px}
+.logo svg{flex:none}
+.logo b{font-family:var(--f-logo);font-size:20px;letter-spacing:.04em;white-space:nowrap}
+.logo small{color:var(--muted);font-size:11px;display:block;margin-top:-2px;letter-spacing:.05em}
+.projname{background:transparent;border:1px solid transparent;border-radius:6px;padding:4px 8px;min-width:0;width:16em;color:var(--fg)}
+.projname:hover,.projname:focus{border-color:var(--line);background:var(--panel)}
+.spacer{flex:1}
+.btn{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 10px;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;line-height:1.2}
+.btn:hover{border-color:#3d454e;background:#262c32}
+.btn:disabled{opacity:.4;cursor:default}
+.btn.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.ghost{background:transparent;border-color:transparent}
+.btn.ghost:hover{background:var(--panel2)}
+.btn.icon{padding:6px 8px}
+kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid var(--line);border-radius:3px;padding:0 4px}
+
+/* 中段三欄 */
+.main{display:grid;grid-template-columns:230px minmax(0,1fr) 330px;gap:8px;min-height:0}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:0;min-width:0}
+.ph{display:flex;align-items:center;gap:6px;padding:7px 10px;border-bottom:1px solid var(--line);font-weight:700;font-size:12px;letter-spacing:.06em}
+.ph .muted{font-weight:400;letter-spacing:0}
+.pb{padding:10px;overflow:auto;min-height:0;flex:1}
+.muted{color:var(--muted)}
+
+/* 素材箱 */
+.drop{display:block;border:1px dashed #3a424b;border-radius:8px;padding:12px;text-align:center;color:var(--muted);line-height:1.6}
+.drop.over{border-color:var(--accent);color:var(--fg);background:#f0a83a14}
+.bin-sec{font-size:11px;color:var(--muted);letter-spacing:.08em;margin:12px 0 6px}
+.bin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:grab;position:relative;display:flex;flex-direction:column}
+.mi:hover{border-color:#46505a}
+.mi .th{aspect-ratio:16/9;background:#0b0d0f center/cover no-repeat;display:grid;place-items:center;color:var(--muted);font-size:20px;max-width:100%}
+.mi .nm{padding:4px 6px 0;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mi .du{padding:0 6px 4px;font-size:10px;color:var(--muted);font-family:var(--f-mono)}
+.mi .add{position:absolute;top:4px;right:4px;background:#000a;border:0;border-radius:4px;color:#fff;padding:2px 6px;font-size:11px}
+.mi .kind{position:absolute;top:4px;left:4px;font-size:10px;padding:1px 5px;border-radius:3px;color:#fff}
+
+/* 監看螢幕 */
+.monitor{display:flex;flex-direction:column}
+.screen{flex:1;min-height:0;display:grid;place-items:center;background:#08090a;border-radius:0 0 0 0;position:relative;overflow:hidden}
+.screen canvas{max-width:100%;max-height:100%;background:#000;display:block;box-shadow:0 0 0 1px #ffffff10}
+.transport{display:flex;align-items:center;gap:6px;padding:7px 10px;border-top:1px solid var(--line);flex-wrap:wrap}
+.tc{font-family:var(--f-mono);font-size:14px;font-variant-numeric:tabular-nums;color:var(--accent);min-width:8.5em}
+.tc small{color:var(--muted);font-size:11px}
+.playbtn{width:34px;height:34px;border-radius:50%;background:var(--accent);color:var(--accent-ink);border:0;display:grid;place-items:center}
+.seqfmt{margin-left:auto}
+select,input[type=text],input[type=number],textarea{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 7px}
+textarea{resize:vertical;width:100%}
+
+/* 右側面板 */
+.tabs{display:flex;gap:2px;padding:4px;border-bottom:1px solid var(--line)}
+.tab{flex:1;background:transparent;border:0;border-radius:5px;padding:6px;color:var(--muted);font-weight:500}
+.tab[aria-selected=true]{background:var(--panel2);color:var(--fg)}
+.field{display:grid;grid-template-columns:5.2em minmax(0,1fr) 3.4em;align-items:center;gap:8px;margin:7px 0}
+.field label{color:var(--muted);font-size:12px}
+.field output{font-family:var(--f-mono);font-size:11px;text-align:right;font-variant-numeric:tabular-nums}
+.field input[type=range]{width:100%;accent-color:var(--accent)}
+.sec{margin:4px 0 14px}
+.sec h4{margin:0 0 6px;font-size:11px;letter-spacing:.08em;color:var(--muted);font-weight:500;display:flex;justify-content:space-between;align-items:center}
+.looks{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.look{border:1px solid var(--line);border-radius:6px;background:var(--panel2);padding:0;overflow:hidden;font-size:11px}
+.look i{display:block;aspect-ratio:4/3;background:linear-gradient(135deg,#2e6d8f,#d39a55 60%,#7a3b2a)}
+.look span{display:block;padding:3px 0}
+.look[aria-pressed=true]{border-color:var(--accent);color:var(--accent)}
+.empty{color:var(--muted);line-height:1.7;padding:6px 2px}
+.row2{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+.seg button{background:var(--panel2);border:0;padding:5px 9px;border-right:1px solid var(--line)}
+.seg button:last-child{border-right:0}
+.seg button[aria-pressed=true]{background:var(--accent);color:var(--accent-ink);font-weight:700}
+
+/* 小柯助手 */
+.chat{display:flex;flex-direction:column;gap:8px}
+.msg{padding:8px 10px;border-radius:8px;line-height:1.6;white-space:pre-wrap;word-break:break-word;max-width:92%}
+.msg.me{background:#f0a83a22;border:1px solid #f0a83a44;align-self:flex-end}
+.msg.kk{background:var(--panel2);border:1px solid var(--line);align-self:flex-start}
+.msg.sys{color:var(--muted);font-size:11px;align-self:center;background:transparent;padding:2px}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:transparent;border:1px solid var(--line);border-radius:999px;padding:4px 10px;font-size:12px;color:var(--fg)}
+.chip:hover{border-color:var(--accent)}
+.ask{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line)}
+.ask textarea{flex:1;min-height:38px;max-height:120px}
+
+/* 時間軸 */
+.tl{background:var(--panel);border:1px solid var(--line);border-radius:8px;display:flex;flex-direction:column;min-height:0}
+.tl-tools{display:flex;align-items:center;gap:4px;padding:5px 8px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.tl-tools .sep{width:1px;height:18px;background:var(--line);margin:0 4px}
+.tl-tools label{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.tl-body{flex:1;min-height:0;display:grid;grid-template-columns:96px minmax(0,1fr);overflow:auto}
+.heads{position:sticky;left:0;z-index:5;background:var(--panel);border-right:1px solid var(--line)}
+.heads .rul{height:26px;border-bottom:1px solid var(--line)}
+.head{display:flex;align-items:center;justify-content:space-between;padding:0 6px;border-bottom:1px solid var(--line);font-size:11px}
+.head b{font-family:var(--f-mono);font-weight:500}
+.head span{color:var(--muted);font-size:10px;display:block}
+.head button{background:transparent;border:1px solid transparent;border-radius:4px;padding:1px 4px;color:var(--muted);font-size:11px}
+.head button[aria-pressed=true]{color:var(--danger);border-color:#e05a4f55}
+.tlwrap{position:relative;min-width:0}
+.inner{position:relative}
+.ruler{height:26px;border-bottom:1px solid var(--line);position:relative;cursor:ew-resize;background:
+  repeating-linear-gradient(90deg,#ffffff18 0 1px,transparent 1px var(--minor,6px)) bottom/100% 6px no-repeat}
+.ruler .lb{position:absolute;top:3px;font-family:var(--f-mono);font-size:10px;color:var(--muted);transform:translateX(3px);border-left:1px solid #ffffff40;padding-left:3px;height:21px}
+.trow{position:relative;border-bottom:1px solid var(--line)}
+.trow.k-text{background:#8e6cc40a}.trow.k-video{background:#3a78ad08}.trow.k-audio{background:#3b937208}
+.trow.dropok{background:#f0a83a18}
+.h-text{height:38px}.h-video{height:58px}.h-audio{height:48px}
+.clip{position:absolute;top:3px;bottom:3px;border-radius:5px;overflow:hidden;cursor:grab;color:#fff;font-size:11px;
+  border:1px solid #ffffff30;background-repeat:repeat-x;background-size:auto 100%;touch-action:none;user-select:none}
+.clip.k-video,.clip.k-image{background-color:var(--v)}
+.clip.k-gen{background-color:var(--g)}
+.clip.k-audio{background-color:var(--a);background-repeat:no-repeat}
+.clip.k-text{background-color:var(--t)}
+.clip.offline{background:repeating-linear-gradient(45deg,#5a1f1c 0 8px,#3a1513 8px 16px)}
+.clip .nm{position:absolute;left:8px;right:8px;top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px #000c;pointer-events:none}
+.clip .bd{position:absolute;right:8px;bottom:3px;white-space:nowrap;max-width:calc(100% - 16px);overflow:hidden;font-family:var(--f-mono);font-size:10px;background:#000a;border-radius:3px;padding:0 4px;pointer-events:none}
+.clip .fi,.clip .fo{position:absolute;top:0;bottom:0;pointer-events:none}
+.clip .fi{left:0;background:linear-gradient(to top right,#000a 50%,transparent 50%)}
+.clip .fo{right:0;background:linear-gradient(to top left,#000a 50%,transparent 50%)}
+.clip .hd{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:2}
+.clip .hd.l{left:0}.clip .hd.r{right:0}
+.clip:hover .hd{background:#ffffff30}
+.clip.sel{border:2px solid var(--accent);box-shadow:0 0 0 1px #000}
+.playhead{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--accent);pointer-events:none;z-index:4}
+.playhead::before{content:"";position:absolute;top:0;left:-7px;border:6px solid transparent;border-top:9px solid var(--accent)}
+.zoom{width:110px;accent-color:var(--accent)}
+
+/* 對話框 */
+.ov{position:fixed;inset:0;background:#000a;display:grid;place-items:center;z-index:50;padding:16px}
+.dlg{background:var(--panel);border:1px solid var(--line);border-radius:10px;width:min(560px,100%);max-height:100%;overflow:auto;padding:16px}
+.dlg h3{margin:0 0 10px;font-family:var(--f-logo);font-size:20px}
+.dlg .grid{display:grid;grid-template-columns:7em minmax(0,1fr);gap:10px;align-items:center;margin:10px 0}
+.bar{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.dlg video{width:100%;border-radius:6px;background:#000;margin-top:10px;max-height:300px}
+.note{font-size:12px;color:var(--muted);line-height:1.6}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:#2a3037;border:1px solid var(--line);padding:8px 14px;border-radius:8px;z-index:60;box-shadow:0 6px 20px #0008;max-width:calc(100% - 32px)}
+.keys{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:12px}
+
+@media (max-width:980px){
+  body{overflow:auto}
+  html,body{height:auto}
+  .app{height:auto;display:flex;flex-direction:column}
+  .main{display:flex;flex-direction:column}
+  .monitor{order:-1}
+  .screen{aspect-ratio:16/9;max-width:100%}
+  .panel.bin-p .pb,.panel.side .pb{max-height:360px}
+  .tl{height:340px}
+  .projname{width:100%;order:5}
+  .tl-body{grid-template-columns:64px minmax(0,1fr)}
+  .head span{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<div class="app" id="app">
+  <header class="top">
+    <div class="logo">
+      <svg width="34" height="34" viewBox="0 0 34 34" aria-hidden="true">
+        <circle cx="17" cy="17" r="15.5" fill="none" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M17 1.5 V32.5 M1.5 17 H32.5" stroke="var(--accent)" stroke-width="1" opacity=".45"/>
+        <path d="M17 17 L17 1.5 A15.5 15.5 0 0 1 32.1 13.4 Z" fill="var(--accent)" opacity=".85"/>
+        <text x="17" y="22.5" text-anchor="middle" font-size="14" font-weight="700" fill="var(--fg)" font-family="LXGW WenKai TC, serif">柯</text>
+      </svg>
+      <div><b>小柯影音剪輯助手</b><small>線上剪片・所有檔案只留在你的電腦</small></div>
+    </div>
+    <input class="projname" id="projName" aria-label="專案名稱" value="範例專案">
+    <div class="spacer"></div>
+    <button class="btn ghost icon" id="bUndo" title="復原 (Ctrl+Z)">↶ 復原</button>
+    <button class="btn ghost icon" id="bRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
+    <button class="btn" id="bOpen" title="開啟專案檔 (.json)">開啟專案</button>
+    <button class="btn" id="bSave" title="儲存專案檔 (.json)">儲存專案</button>
+    <button class="btn" id="bKeys">快捷鍵</button>
+    <button class="btn primary" id="bExport">匯出影片</button>
+  </header>
+
+  <div class="main">
+    <section class="panel bin-p" aria-label="素材箱">
+      <div class="ph">素材箱 <span class="muted" id="binCount"></span></div>
+      <div class="pb">
+        <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
+        <input type="file" id="fileIn" multiple accept="video/*,audio/*,image/*" hidden>
+        <div class="bin-sec">我的素材</div>
+        <div class="bin" id="bin"></div>
+        <div class="bin-sec">內建素材</div>
+        <div class="bin" id="binGen"></div>
+        <div class="bin-sec">字幕檔</div>
+        <div class="row2">
+          <button class="btn" id="bSrtIn">匯入 SRT</button>
+          <button class="btn" id="bSrtOut">匯出 SRT</button>
+          <input type="file" id="srtIn" accept=".srt,.vtt,text/plain" hidden>
+          <input type="file" id="projIn" accept=".json,application/json" hidden>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel monitor" aria-label="節目監看">
+      <div class="ph">節目監看 <span class="muted" id="seqInfo"></span></div>
+      <div class="screen" id="screen"><canvas id="cv" width="1280" height="720"></canvas></div>
+      <div class="transport">
+        <button class="btn ghost icon" id="bHome" title="回到開頭 (Home)">⏮</button>
+        <button class="btn ghost icon" id="bPrev" title="上一格 (←)">◀︎|</button>
+        <button class="playbtn" id="bPlay" title="播放／暫停 (空白鍵)" aria-label="播放">▶</button>
+        <button class="btn ghost icon" id="bNext" title="下一格 (→)">|▶︎</button>
+        <button class="btn ghost icon" id="bEnd" title="跳到結尾 (End)">⏭</button>
+        <div class="tc" id="tc">00:00:00:00</div>
+        <label class="muted" style="display:inline-flex;gap:5px;align-items:center"><input type="checkbox" id="safe"> 安全框</label>
+        <select class="seqfmt" id="fmt" aria-label="畫面比例">
+          <option value="hd720">橫式 16:9・1280×720</option>
+          <option value="hd1080">橫式 16:9・1920×1080</option>
+          <option value="vert">直式 9:16・1080×1920（短影音）</option>
+          <option value="square">方形 1:1・1080×1080</option>
+        </select>
+      </div>
+    </section>
+
+    <section class="panel side" aria-label="屬性與助手">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" data-tab="props" aria-selected="true">片段屬性</button>
+        <button class="tab" role="tab" data-tab="color" aria-selected="false">調色</button>
+        <button class="tab" role="tab" data-tab="kk" aria-selected="false">小柯助手</button>
+      </div>
+      <div class="pb" id="pProps"></div>
+      <div class="pb" id="pColor" hidden></div>
+      <div id="pKK" hidden style="display:flex;flex-direction:column;flex:1;min-height:0">
+        <div class="pb"><div class="chat" id="chat"></div></div>
+        <div class="ask">
+          <textarea id="askIn" rows="1" placeholder="跟小柯說你想怎麼剪，例如：把第一段變成黑白，再加一句字幕「出發囉」"></textarea>
+          <button class="btn primary" id="askGo">送出</button>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="tl" aria-label="時間軸">
+    <div class="tl-tools">
+      <button class="btn ghost" id="tSplit" title="在播放頭分割 (S)">✂ 分割 <kbd>S</kbd></button>
+      <button class="btn ghost" id="tDel" title="刪除 (Delete)">刪除 <kbd>Del</kbd></button>
+      <button class="btn ghost" id="tRip" title="波紋刪除：刪掉後把後面的片段往前補 (Shift+Delete)">波紋刪除</button>
+      <button class="btn ghost" id="tDup" title="複製一份接在後面 (D)">複製 <kbd>D</kbd></button>
+      <button class="btn ghost" id="tGap" title="移除所有軌道上的空隙">移除空隙</button>
+      <button class="btn ghost" id="tText" title="在播放頭加一句字幕 (T)">＋字幕 <kbd>T</kbd></button>
+      <span class="sep"></span>
+      <label><input type="checkbox" id="snap" checked> 吸附</label>
+      <span class="spacer"></span>
+      <label>縮放 <input type="range" class="zoom" id="zoom" min="8" max="300" value="70"></label>
+    </div>
+    <div class="tl-body" id="tlBody">
+      <div class="heads" id="heads"></div>
+      <div class="tlwrap"><div class="inner" id="inner"><div class="ruler" id="ruler"></div><div id="rows"></div><div class="playhead" id="ph"></div></div></div>
+    </div>
+  </section>
+</div>
+
+<div class="ov" id="exportOv" hidden>
+  <div class="dlg" role="dialog" aria-labelledby="exTitle">
+    <h3 id="exTitle">匯出影片</h3>
+    <div class="grid">
+      <label for="exName">檔名</label><input type="text" id="exName">
+      <label for="exFmt">格式</label><select id="exFmt"></select>
+      <label for="exQ">畫質</label>
+      <select id="exQ"><option value="4000000">一般（約 4 Mbps）</option><option value="8000000" selected>高畫質（約 8 Mbps）</option><option value="16000000">最高（約 16 Mbps）</option></select>
+      <span></span><label><input type="checkbox" id="exMute" checked> 匯出時不出聲（仍會錄進影片）</label>
+    </div>
+    <p class="note" id="exNote">匯出會從頭到尾即時播放一遍並錄下來，片長多久就需要多久。匯出時請讓這個分頁保持在前景。</p>
+    <div class="bar"><i id="exBar"></i></div>
+    <p class="note" id="exStat"></p>
+    <video id="exVid" controls playsinline hidden></video>
+    <div class="row2" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn" id="exClose">關閉</button>
+      <button class="btn" id="exCancel" hidden>取消匯出</button>
+      <button class="btn" id="exSave" hidden>儲存到電腦</button>
+      <button class="btn primary" id="exGo">開始匯出</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="keysOv" hidden>
+  <div class="dlg">
+    <h3>快捷鍵</h3>
+    <div class="keys">
+      <kbd>空白鍵</kbd><span>播放／暫停</span>
+      <kbd>J K L</kbd><span>倒退播放頭／暫停／播放</span>
+      <kbd>← →</kbd><span>前後移動一格（按住 Shift 一次 10 格）</span>
+      <kbd>Home End</kbd><span>跳到開頭／結尾</span>
+      <kbd>S</kbd><span>在播放頭分割（有選片段時只切它，沒選就整條切）</span>
+      <kbd>Delete</kbd><span>刪除選取的片段</span>
+      <kbd>Shift+Delete</kbd><span>波紋刪除（後面自動往前補）</span>
+      <kbd>D</kbd><span>複製片段</span>
+      <kbd>T</kbd><span>在播放頭加字幕</span>
+      <kbd>Ctrl+Z</kbd><span>復原（Mac 用 ⌘）</span>
+      <kbd>Ctrl+Shift+Z</kbd><span>重做</span>
+      <kbd>+ −</kbd><span>放大／縮小時間軸</span>
+    </div>
+    <p class="note">拖動片段可以移動或換軌；拖片段兩端可以修剪長度。片段放上去時會覆蓋同一軌重疊的部分。</p>
+    <div class="row2" style="justify-content:flex-end"><button class="btn" id="keysClose">關閉</button></div>
+  </div>
+</div>
+
+<script>
+'use strict';
+/* =====================================================================
+ * 小柯影音剪輯助手
+ * 設計參考 FilmCraft（storytold/filmcraft）：
+ *  1. 精確時間：所有剪輯運算都用整數 tick（每秒 254,016,000,000），不用浮點秒數，剪多久都不會飄。
+ *  2. 一切皆指令：選單、按鈕、快捷鍵、小柯助手都呼叫同一套「指令」（有 id、參數、可復原）。
+ *  3. 領域模型：媒體(Media) → 片段(Clip) → 軌道(Track) → 序列(Sequence)。
+ * 比喻：Media 是倉庫裡的原始膠卷，Clip 是從膠卷剪下來、貼到剪輯桌上的一小段，Track 是桌上的一條條軌道。
+ * ===================================================================== */
+
+// ---------- 時間基準 ----------
+const TPS = 254016000000;           // 每秒 tick 數（可被所有常見影格率與取樣率整除）
+const FPS = 30;                     // 序列影格率
+const TPF = TPS / FPS;              // 每格 tick 數 = 8,467,200,000（整數）
+const sec = s => Math.round(s * TPS);
+const toSec = t => t / TPS;
+const snapF = t => Math.round(t / TPF) * TPF;   // 對齊到影格邊界
+function tc(t) {                     // 時:分:秒:格
+  const f = Math.max(0, Math.round(t / TPF));
+  const p = [Math.floor(f / FPS / 3600), Math.floor(f / FPS / 60) % 60, Math.floor(f / FPS) % 60, f % FPS];
+  return p.map(n => String(n).padStart(2, '0')).join(':');
+}
+const fmtDur = t => { const s = toSec(t); return s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(1)} 秒`; };
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+
+// ---------- 軌道與畫面格式 ----------
+const TRACKS = [
+  { id: 'T1', kind: 'text', label: '字幕' },
+  { id: 'V2', kind: 'video', label: '疊加畫面' },
+  { id: 'V1', kind: 'video', label: '主畫面' },
+  { id: 'A1', kind: 'audio', label: '音訊' },
+  { id: 'A2', kind: 'audio', label: '配樂' },
+];
+const trackKind = id => (TRACKS.find(t => t.id === id) || {}).kind;
+const FORMATS = { hd720: [1280, 720], hd1080: [1920, 1080], vert: [1080, 1920], square: [1080, 1080] };
+
+// 調色風格（像 Lumetri 的 Creative Looks，用程式寫的色彩轉換，不是 LUT 檔）
+const LOOKS = {
+  none:   { name: '原始', css: '', sw: 'linear-gradient(135deg,#2e6d8f,#d39a55 60%,#7a3b2a)' },
+  warm:   { name: '暖陽', css: 'sepia(.22) saturate(1.2) ', tint: ['rgba(255,150,60,.18)'], sw: 'linear-gradient(135deg,#7a5a3a,#f0b060 60%,#8a3b1a)' },
+  cool:   { name: '冷調', css: 'saturate(.9) ', tint: ['rgba(60,130,255,.2)'], sw: 'linear-gradient(135deg,#1e4d7f,#8fb5d5 60%,#2a3b5a)' },
+  teal:   { name: '電影青橙', css: 'contrast(1.12) saturate(1.15) ', tint: ['rgba(0,140,160,.28)', 'rgba(255,140,40,.22)'], sw: 'linear-gradient(135deg,#0f5a66,#e0904a 70%)' },
+  mono:   { name: '黑白', css: 'grayscale(1) contrast(1.1) ', sw: 'linear-gradient(135deg,#222,#bbb 60%,#444)' },
+  vintage:{ name: '復古底片', css: 'sepia(.45) contrast(.9) brightness(1.05) saturate(.85) ', tint: ['rgba(255,220,170,.15)'], fade: .08, sw: 'linear-gradient(135deg,#6a5a48,#d8c09a 60%,#7a5a42)' },
+  punch:  { name: '高對比', css: 'contrast(1.35) saturate(1.2) ', sw: 'linear-gradient(135deg,#00406f,#ffb040 55%,#5a0a00)' },
+  soft:   { name: '柔和', css: 'contrast(.88) brightness(1.06) saturate(.92) ', fade: .05, sw: 'linear-gradient(135deg,#7f9aa8,#ead2b8 60%,#a08070)' },
+};
+
+// 內建素材（產生器），像 Premiere 的「彩條」「倒數片頭」「顏色遮罩」
+const GENS = [
+  { gen: 'countdown', name: '倒數片頭', dur: 3, icon: '⏱' },
+  { gen: 'gradient', name: '流動漸層背景', dur: 5, icon: '🌈' },
+  { gen: 'bars', name: '彩條', dur: 3, icon: '▥' },
+  { gen: 'solid', name: '黑色背景', dur: 3, icon: '■', color: '#000000' },
+  { gen: 'solid', name: '白色背景', dur: 3, icon: '□', color: '#ffffff' },
+];
+
+/* ---------- 文件狀態（可復原的部分） ----------
+ * doc = 序列本身：所有片段、軌道狀態、畫面格式。
+ * 媒體（實際檔案）不放進復原紀錄，就像倉庫的膠卷不會因為你按復原而消失。 */
+let doc = {
+  name: '範例專案',
+  format: 'hd720',
+  tracks: { T1: { muted: false }, V2: { muted: false }, V1: { muted: false }, A1: { muted: false }, A2: { muted: false } },
+  clips: [],
+  nextId: 1,
+};
+const Media = new Map();   // id -> {id,name,kind:'video'|'audio'|'image'|'gen',url,dur,w,h,thumb,wave,img,gen,color}
+const UI = { playhead: 0, playing: false, sel: null, pps: 70, snap: true, exporting: false, safe: false, tab: 'props' };
+
+const newId = () => doc.nextId++;
+const clipEnd = c => c.start + c.dur;
+const seqDur = () => doc.clips.reduce((m, c) => Math.max(m, clipEnd(c)), 0);
+const getClip = id => doc.clips.find(c => c.id === Number(id));
+const clipAt = (track, t) => { let r = null; for (const c of doc.clips) if (c.track === track && t >= c.start && t < clipEnd(c)) r = c; return r; };
+const clipsOn = track => doc.clips.filter(c => c.track === track).sort((a, b) => a.start - b.start);
+const clipName = c => c.type === 'text' ? (c.text.content || '（空白字幕）') : (Media.get(c.mediaId)?.name || '媒體離線');
+function maxDurOf(c) {         // 片段最長可以拉多長（受原始素材長度限制）
+  const m = Media.get(c.mediaId);
+  if (!m || !(m.kind === 'video' || m.kind === 'audio')) return Infinity;
+  return Math.floor((m.dur - c.inPt) / c.speed);
+}
+function makeClip(type, track, start, dur, extra = {}) {
+  return Object.assign({
+    id: newId(), type, track, start: snapF(start), dur: Math.max(TPF, snapF(dur)), inPt: 0, mediaId: null,
+    speed: 1, volume: 1, fadeIn: 0, fadeOut: 0,
+    tf: { scale: 100, x: 0, y: 0, rot: 0, opacity: 100 },
+    fx: { exposure: 0, contrast: 0, saturation: 0, temp: 0, vignette: 0, look: 'none' },
+  }, extra);
+}
+function textDefaults(content, style = 'subtitle') {
+  return style === 'title'
+    ? { content, style, size: 9, color: '#ffffff', pos: 'center', bg: false, bold: true }
+    : { content, style, size: 5.2, color: '#ffffff', pos: 'bottom', bg: true, bold: false };
+}
+
+// ---------- 覆蓋式放置：把 [s,e) 範圍內同軌的其他片段讓出來（Premiere 的 overwrite edit） ----------
+function overwrite(track, s, e, exceptId) {
+  for (const c of [...doc.clips]) {
+    if (c.track !== track || c.id === exceptId) continue;
+    const cs = c.start, ce = clipEnd(c);
+    if (ce <= s || cs >= e) continue;
+    if (cs >= s && ce <= e) { doc.clips.splice(doc.clips.indexOf(c), 1); continue; }
+    if (cs < s && ce > e) {
+      const r = structuredClone(c); r.id = newId();
+      r.start = e; r.inPt = c.inPt + (e - cs) * c.speed; r.dur = ce - e; r.fadeIn = 0;
+      c.dur = s - cs; c.fadeOut = 0; doc.clips.push(r);
+    } else if (cs < s) { c.dur = s - cs; }
+    else { const cut = e - cs; c.start = e; c.inPt += cut * c.speed; c.dur = ce - e; }
+  }
+}
+function splitClip(c, t) {
+  if (!(t > c.start && t < clipEnd(c))) return null;
+  t = snapF(t);
+  if (t <= c.start || t >= clipEnd(c)) return null;
+  const r = structuredClone(c); r.id = newId();
+  r.start = t; r.inPt = c.inPt + (t - c.start) * c.speed; r.dur = clipEnd(c) - t; r.fadeIn = 0;
+  c.dur = t - c.start; c.fadeOut = 0;
+  doc.clips.push(r);
+  return r;
+}
+
+/* =====================================================================
+ * 指令系統：所有操作都經過 exec(id, params)。
+ * 對外（小柯助手、快捷鍵、按鈕）時間單位都是「秒」，內部轉成 tick。
+ * ===================================================================== */
+const Commands = {};
+function defCmd(id, label, params, run, mutates = true) { Commands[id] = { id, label, params, run, mutates }; }
+const undoStack = [], redoStack = [];
+let lastCoalesce = null, lastCoalesceAt = 0;
+function snapshot() { return JSON.stringify(doc); }
+function exec(id, p = {}, opt = {}) {
+  const c = Commands[id];
+  if (!c) throw new Error('沒有這個指令：' + id);
+  if (UI.exporting && c.mutates) throw new Error('匯出中，暫時不能修改');
+  let snap = null;
+  if (c.mutates) {
+    const now = performance.now();
+    const coalesced = opt.coalesce && opt.coalesce === lastCoalesce && now - lastCoalesceAt < 1200;
+    if (!coalesced) snap = snapshot();
+    lastCoalesce = opt.coalesce || null; lastCoalesceAt = now;
+  }
+  let r;
+  try { r = c.run(p || {}); }
+  catch (e) { throw e; }
+  if (c.mutates) {
+    if (snap) { undoStack.push(snap); if (undoStack.length > 200) undoStack.shift(); redoStack.length = 0; }
+    changed(opt.light);
+  }
+  return r === undefined ? '完成' : r;
+}
+function undo() { if (!undoStack.length) return '沒有可以復原的步驟'; redoStack.push(snapshot()); doc = JSON.parse(undoStack.pop()); lastCoalesce = null; changed(); return '已復原'; }
+function redo() { if (!redoStack.length) return '沒有可以重做的步驟'; undoStack.push(snapshot()); doc = JSON.parse(redoStack.pop()); lastCoalesce = null; changed(); return '已重做'; }
+
+// 找出要操作的片段：有給 clipId 用它，沒給就用目前選取的
+function target(p) {
+  const c = p.clipId != null ? getClip(p.clipId) : getClip(UI.sel);
+  if (!c) throw new Error(p.clipId != null ? `找不到片段 #${p.clipId}` : '請先選一個片段');
+  return c;
+}
+// 依條件挑出多個片段：all=true 時套用到所有符合 type 的片段
+function targets(p) {
+  if (p.all) {
+    const types = p.type ? [].concat(p.type) : null;
+    const list = doc.clips.filter(c => !types || types.includes(c.type) || (types.includes('video') && (c.type === 'image' || c.type === 'gen')));
+    if (!list.length) throw new Error('沒有符合的片段');
+    return list;
+  }
+  if (Array.isArray(p.clipIds)) return p.clipIds.map(id => { const c = getClip(id); if (!c) throw new Error(`找不到片段 #${id}`); return c; });
+  return [target(p)];
+}
+
+defCmd('timeline.split', '在播放頭分割', '{clipId?, at?秒}：有 clipId 只切那段；沒有就切斷播放頭下所有片段', p => {
+  const t = p.at != null ? sec(Number(p.at)) : UI.playhead;
+  const sc = getClip(UI.sel);
+  const list = p.clipId != null ? [target(p)] : (sc && t > sc.start && t < clipEnd(sc) && p.allTracks !== true ? [sc] : doc.clips.filter(c => t > c.start && t < clipEnd(c)));
+  let n = 0; for (const c of list) if (splitClip(c, t)) n++;
+  if (!n) throw new Error('播放頭下面沒有可以分割的片段');
+  return `分割了 ${n} 個片段`;
+});
+defCmd('timeline.delete', '刪除片段', '{clipId? | clipIds?[]}', p => {
+  const list = targets(p);
+  doc.clips = doc.clips.filter(c => !list.includes(c));
+  if (list.some(c => c.id === UI.sel)) UI.sel = null;
+  return `刪除了 ${list.length} 個片段`;
+});
+defCmd('timeline.rippleDelete', '波紋刪除', '{clipId?}：刪掉後同一軌後面的片段往前補', p => {
+  const c = target(p);
+  doc.clips = doc.clips.filter(x => x !== c);
+  for (const x of doc.clips) if (x.track === c.track && x.start >= clipEnd(c)) x.start -= c.dur;
+  if (UI.sel === c.id) UI.sel = null;
+  return '已波紋刪除';
+});
+defCmd('timeline.duplicate', '複製片段', '{clipId?}：複製一份接在原片段後面', p => {
+  const c = target(p); const r = structuredClone(c); r.id = newId(); r.start = clipEnd(c);
+  overwrite(r.track, r.start, clipEnd(r), r.id); doc.clips.push(r); UI.sel = r.id;
+  return `複製成片段 #${r.id}`;
+});
+defCmd('timeline.closeGaps', '移除空隙', '{track?}：把軌道上的片段往前靠緊', p => {
+  const tracks = p.track ? [p.track] : TRACKS.map(t => t.id);
+  for (const tr of tracks) { let t = 0; for (const c of clipsOn(tr)) { c.start = t; t = clipEnd(c); } }
+  return '空隙已移除';
+});
+defCmd('timeline.move', '移動片段', '{clipId, start秒, track?}：會覆蓋目標位置的片段', p => {
+  const c = target(p);
+  const tr = p.track || c.track;
+  if (trackKind(tr) !== trackKind(c.track)) throw new Error(`${c.track} 的片段不能放到 ${tr}`);
+  c.track = tr; c.start = Math.max(0, snapF(sec(Number(p.start))));
+  overwrite(c.track, c.start, clipEnd(c), c.id);
+  return `片段 #${c.id} 移到 ${tr} 的 ${toSec(c.start).toFixed(2)} 秒`;
+});
+defCmd('timeline.trim', '修剪片段', '{clipId, start?秒, end?秒}：改變片段在時間軸上的起點或終點', p => {
+  const c = target(p);
+  const end0 = clipEnd(c);
+  if (p.start != null) {
+    let ns = Math.max(0, snapF(sec(Number(p.start))));
+    const minStart = c.start - Math.floor(c.inPt / c.speed);     // 不能早於素材開頭
+    if (Media.get(c.mediaId) && (Media.get(c.mediaId).kind === 'video' || Media.get(c.mediaId).kind === 'audio')) ns = Math.max(ns, minStart);
+    ns = Math.min(ns, end0 - TPF);
+    c.inPt = Math.max(0, c.inPt + (ns - c.start) * c.speed); c.dur = end0 - ns; c.start = ns;
+  }
+  if (p.end != null) {
+    let ne = snapF(sec(Number(p.end)));
+    ne = Math.max(ne, c.start + TPF);
+    c.dur = Math.min(ne - c.start, maxDurOf(c));
+  }
+  overwrite(c.track, c.start, clipEnd(c), c.id);
+  return `片段 #${c.id} 現在是 ${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
+});
+defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, mode?:"append"|"overwrite"|"insert"}：append 接在該軌最後（預設）', p => {
+  const m = Media.get(String(p.mediaId));
+  if (!m) throw new Error('找不到素材 ' + p.mediaId);
+  const track = p.track || (m.kind === 'audio' ? 'A1' : 'V1');
+  const k = trackKind(track);
+  if (!k || (m.kind === 'audio') !== (k === 'audio') || k === 'text') throw new Error(`${m.name} 不能放到 ${track}`);
+  const mode = p.mode || (p.start != null ? 'overwrite' : 'append');
+  let start = p.start != null ? sec(Number(p.start)) : (mode === 'append' ? clipsOn(track).reduce((a, c) => Math.max(a, clipEnd(c)), 0) : UI.playhead);
+  const type = m.kind;
+  const c = makeClip(type, track, start, m.dur, { mediaId: m.id });
+  if (m.kind === 'gen') c.gen = { kind: m.gen, color: m.color };
+  if (mode === 'insert') {
+    for (const x of doc.clips) if (x.track === track && x.start < c.start && clipEnd(x) > c.start) splitClip(x, c.start);
+    for (const x of doc.clips) if (x.track === track && x.start >= c.start) x.start += c.dur;
+  } else overwrite(track, c.start, clipEnd(c), c.id);
+  doc.clips.push(c); UI.sel = c.id;
+  return `已放到 ${track}，片段 #${c.id}，${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
+});
+defCmd('clip.select', '選取片段', '{clipId|null}', p => { UI.sel = p.clipId == null ? null : (getClip(p.clipId) ? Number(p.clipId) : null); renderAll(); return UI.sel ? `選了 #${UI.sel}` : '取消選取'; }, false);
+defCmd('clip.set', '設定片段屬性', '{clipId?|clipIds?|all?+type?, speed?(0.25–4), volume?(0–2，1=原音量), muted?, fadeIn?秒, fadeOut?秒, scale?%, x?%, y?%, rotation?度, opacity?%}', p => {
+  const list = targets(p);
+  for (const c of list) {
+    if (p.speed != null) {
+      const ns = clamp(Number(p.speed), 0.25, 4);
+      const nd = snapF(c.dur * c.speed / ns);
+      c.speed = ns; c.dur = Math.max(TPF, nd);
+      overwrite(c.track, c.start, clipEnd(c), c.id);
+    }
+    if (p.volume != null) c.volume = clamp(Number(p.volume), 0, 2);
+    if (p.muted != null) c.volume = p.muted ? 0 : (c.volume || 1);
+    if (p.fadeIn != null) c.fadeIn = clamp(Number(p.fadeIn), 0, toSec(c.dur));
+    if (p.fadeOut != null) c.fadeOut = clamp(Number(p.fadeOut), 0, toSec(c.dur));
+    if (p.scale != null) c.tf.scale = clamp(Number(p.scale), 10, 400);
+    if (p.x != null) c.tf.x = clamp(Number(p.x), -100, 100);
+    if (p.y != null) c.tf.y = clamp(Number(p.y), -100, 100);
+    if (p.rotation != null) c.tf.rot = clamp(Number(p.rotation), -180, 180);
+    if (p.opacity != null) c.tf.opacity = clamp(Number(p.opacity), 0, 100);
+  }
+  return `更新了 ${list.length} 個片段`;
+});
+defCmd('color.set', '調色', '{clipId?|all?, look?:"none|warm|cool|teal|mono|vintage|punch|soft", exposure?(-100~100), contrast?(-100~100), saturation?(-100~100), temperature?(-100冷~100暖), vignette?(0~100), reset?:true}', p => {
+  const list = targets(Object.assign({ type: 'video' }, p)).filter(c => c.type !== 'text' && c.type !== 'audio');
+  if (!list.length) throw new Error('調色只能用在畫面片段（影片、圖片、內建素材）');
+  for (const c of list) {
+    if (p.reset) c.fx = { exposure: 0, contrast: 0, saturation: 0, temp: 0, vignette: 0, look: 'none' };
+    if (p.look != null) { if (!LOOKS[p.look]) throw new Error('沒有這個風格：' + p.look); c.fx.look = p.look; }
+    for (const [k, f] of [['exposure', 'exposure'], ['contrast', 'contrast'], ['saturation', 'saturation'], ['temperature', 'temp'], ['vignette', 'vignette']])
+      if (p[k] != null) c.fx[f] = clamp(Number(p[k]), k === 'vignette' ? 0 : -100, 100);
+  }
+  return `調整了 ${list.length} 個片段的顏色`;
+});
+defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), duration?秒(預設3), style?:"subtitle"|"title"}', p => {
+  const content = String(p.text ?? '').trim() || '在這裡輸入字幕';
+  const st = p.start != null ? sec(Number(p.start)) : UI.playhead;
+  const c = makeClip('text', 'T1', st, sec(Number(p.duration) || 3), { text: textDefaults(content, p.style === 'title' ? 'title' : 'subtitle') });
+  overwrite('T1', c.start, clipEnd(c), c.id); doc.clips.push(c); UI.sel = c.id;
+  return `加了字幕 #${c.id}：「${content}」`;
+});
+defCmd('text.set', '修改文字', '{clipId?, text?, size?(畫面高度的%), color?(#hex), position?:"top"|"center"|"bottom", background?:bool, bold?:bool}', p => {
+  const list = targets(Object.assign({ type: 'text' }, p)).filter(c => c.type === 'text');
+  if (!list.length) throw new Error('請選一個字幕片段');
+  for (const c of list) {
+    if (p.text != null) c.text.content = String(p.text);
+    if (p.size != null) c.text.size = clamp(Number(p.size), 2, 25);
+    if (p.color != null && /^#[0-9a-f]{6}$/i.test(p.color)) c.text.color = p.color;
+    if (p.position != null && ['top', 'center', 'bottom'].includes(p.position)) c.text.pos = p.position;
+    if (p.background != null) c.text.bg = !!p.background;
+    if (p.bold != null) c.text.bold = !!p.bold;
+  }
+  return `更新了 ${list.length} 個字幕`;
+});
+defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}]}', p => {
+  const items = Array.isArray(p.items) ? p.items : [];
+  if (!items.length) throw new Error('沒有字幕內容');
+  for (const it of items.slice(0, 500)) {
+    const s = sec(Number(it.start) || 0), e = sec(Number(it.end) || 0);
+    if (!(e > s)) continue;
+    const c = makeClip('text', 'T1', s, e - s, { text: textDefaults(String(it.text || '')) });
+    overwrite('T1', c.start, clipEnd(c), c.id); doc.clips.push(c);
+  }
+  return `加入 ${items.length} 句字幕`;
+});
+defCmd('sequence.setFormat', '畫面比例', '{format:"hd720"|"hd1080"|"vert"|"square"}', p => {
+  if (!FORMATS[p.format]) throw new Error('不支援的格式');
+  doc.format = p.format; return '畫面改為 ' + FORMATS[p.format].join('×');
+});
+defCmd('track.mute', '軌道靜音／隱藏', '{track, muted:bool}', p => {
+  if (!doc.tracks[p.track]) throw new Error('沒有這條軌道');
+  doc.tracks[p.track].muted = !!p.muted; return `${p.track} ${p.muted ? '已關閉' : '已開啟'}`;
+});
+defCmd('project.rename', '專案改名', '{name}', p => { doc.name = String(p.name || '未命名專案').slice(0, 80); });
+defCmd('playback.seek', '移動播放頭', '{seconds}', p => { seek(sec(Number(p.seconds) || 0)); return `播放頭在 ${tc(UI.playhead)}`; }, false);
+defCmd('playback.play', '播放', '{}', () => { play(); }, false);
+defCmd('playback.pause', '暫停', '{}', () => { pause(); }, false);
+defCmd('edit.undo', '復原', '{}', () => undo(), false);
+defCmd('edit.redo', '重做', '{}', () => redo(), false);
+
+/* =====================================================================
+ * 媒體匯入：讀取長度、縮圖、波形。檔案不會上傳，只用瀏覽器的 blob 網址。
+ * ===================================================================== */
+function kindOf(file) {
+  if (file.type.startsWith('video/') || /\.(mp4|mov|webm|mkv|m4v)$/i.test(file.name)) return 'video';
+  if (file.type.startsWith('audio/') || /\.(mp3|wav|m4a|aac|ogg|flac|opus)$/i.test(file.name)) return 'audio';
+  if (file.type.startsWith('image/') || /\.(png|jpe?g|gif|webp|bmp)$/i.test(file.name)) return 'image';
+  return null;
+}
+function loadMeta(el) {
+  return new Promise((res, rej) => {
+    el.onloadedmetadata = () => res();
+    el.onerror = () => rej(new Error('瀏覽器無法讀取這個格式'));
+    setTimeout(() => rej(new Error('讀取逾時')), 20000);
+  });
+}
+async function importFiles(files) {
+  const out = [];
+  for (const f of files) {
+    const kind = kindOf(f);
+    if (!kind) { toast(`「${f.name}」不是影片、音訊或圖片，略過`); continue; }
+    const id = 'm' + Math.random().toString(36).slice(2, 8);
+    const url = URL.createObjectURL(f);
+    const m = { id, name: f.name, kind, url, size: f.size, dur: sec(5), w: 0, h: 0, thumb: '', wave: '' };
+    try {
+      if (kind === 'image') {
+        const img = new Image(); img.src = url; await img.decode();
+        m.img = img; m.w = img.naturalWidth; m.h = img.naturalHeight; m.thumb = url;
+      } else {
+        const el = document.createElement(kind === 'audio' ? 'audio' : 'video');
+        el.preload = 'auto'; el.muted = true; el.playsInline = true; el.src = url;
+        await loadMeta(el);
+        let d = el.duration;
+        if (!isFinite(d)) { el.currentTime = 1e7; await new Promise(r => { el.ontimeupdate = r; setTimeout(r, 3000); }); d = el.duration; el.currentTime = 0; }
+        m.dur = snapF(sec(isFinite(d) ? d : 10));
+        if (kind === 'video') { m.w = el.videoWidth; m.h = el.videoHeight; m.thumb = await grabThumb(el, Math.min(1, d / 2)); }
+      }
+    } catch (e) { toast(`「${f.name}」讀取失敗：${e.message}`); URL.revokeObjectURL(url); continue; }
+    Media.set(id, m); out.push(m);
+    if (kind !== 'image' && f.size < 250 * 1024 * 1024) makeWave(f, m).catch(() => {});
+    relinkOffline(m);
+  }
+  renderBin(); renderTimeline();
+  return out;
+}
+function grabThumb(el, t) {
+  return new Promise(res => {
+    const done = () => {
+      try {
+        const c = document.createElement('canvas'); c.width = 160; c.height = Math.round(160 * (el.videoHeight / el.videoWidth || .5625));
+        c.getContext('2d').drawImage(el, 0, 0, c.width, c.height); res(c.toDataURL('image/jpeg', .7));
+      } catch { res(''); }
+    };
+    el.onseeked = done; el.currentTime = t || 0; setTimeout(done, 4000);
+  });
+}
+async function makeWave(file, m) {      // 解碼音訊並畫出波形圖
+  const buf = await file.arrayBuffer();
+  const ac = new OfflineAudioContext(1, 1, 44100);
+  const ab = await ac.decodeAudioData(buf);
+  const ch = ab.getChannelData(0);
+  const W = Math.min(6000, Math.max(200, Math.round(ab.duration * 40))), H = 60;
+  const step = Math.max(1, Math.floor(ch.length / W));
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'); g.fillStyle = 'rgba(255,255,255,.55)';
+  for (let x = 0; x < W; x++) {
+    let mx = 0; const o = x * step;
+    for (let i = 0; i < step; i += 8) { const v = Math.abs(ch[o + i] || 0); if (v > mx) mx = v; }
+    const h = Math.max(1, mx * H * .95); g.fillRect(x, (H - h) / 2, 1, h);
+  }
+  m.wave = c.toDataURL('image/png'); renderTimeline();
+}
+// 開啟專案檔後，名稱相同的素材匯入時自動接回
+function relinkOffline(m) {
+  for (const c of doc.clips) if (c.offlineName && c.offlineName === m.name) { c.mediaId = m.id; delete c.offlineName; }
+}
+// 內建產生器素材
+GENS.forEach((g, i) => Media.set('g' + i, { id: 'g' + i, name: g.name, kind: 'gen', gen: g.gen, color: g.color, dur: sec(g.dur), icon: g.icon, builtin: true }));
+
+/* =====================================================================
+ * 播放引擎：每個片段配一個 <video>/<audio> 元素；用 WebAudio 控制音量並供匯出錄音。
+ * 播放時以牆上時鐘推進播放頭，媒體元素若飄移超過 0.3 秒就校正。
+ * ===================================================================== */
+const cv = $('cv'), ctx = cv.getContext('2d');
+const genCv = document.createElement('canvas'), genCtx = genCv.getContext('2d');
+const Els = new Map();   // clipId -> {el, mediaId, gain}
+let AC = null, master = null, speaker = null, recDest = null;
+let needDraw = true;
+function ensureAudio() {
+  if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
+  try {
+    AC = new (window.AudioContext || window.webkitAudioContext)();
+    master = AC.createGain(); speaker = AC.createGain();
+    master.connect(speaker); speaker.connect(AC.destination);
+    recDest = AC.createMediaStreamDestination(); master.connect(recDest);
+    for (const e of Els.values()) hookAudio(e);
+  } catch { AC = null; }
+}
+function hookAudio(e) {
+  if (!AC || e.node) return;
+  try { e.node = AC.createMediaElementSource(e.el); e.gain = AC.createGain(); e.node.connect(e.gain); e.gain.connect(master); } catch { }
+}
+function elFor(c) {
+  let e = Els.get(c.id);
+  if (e && e.mediaId === c.mediaId) return e;
+  if (e) dropEl(c.id);
+  const m = Media.get(c.mediaId);
+  const el = document.createElement(m.kind === 'audio' ? 'audio' : 'video');
+  el.preload = 'auto'; el.playsInline = true; el.src = m.url;
+  el.addEventListener('seeked', () => { needDraw = true; });
+  el.addEventListener('loadeddata', () => { needDraw = true; });
+  e = { el, mediaId: c.mediaId, gain: null, node: null };
+  Els.set(c.id, e); hookAudio(e);
+  return e;
+}
+function dropEl(id) { const e = Els.get(id); if (!e) return; try { e.el.pause(); e.node && e.node.disconnect(); e.el.removeAttribute('src'); e.el.load(); } catch { } Els.delete(id); }
+const srcSec = (c, t) => toSec(c.inPt + (t - c.start) * c.speed);
+function fadeAt(c, t) {
+  const l = toSec(t - c.start), d = toSec(c.dur); let f = 1;
+  if (c.fadeIn > 0) f = Math.min(f, l / c.fadeIn);
+  if (c.fadeOut > 0) f = Math.min(f, (d - l) / c.fadeOut);
+  return clamp(f, 0, 1);
+}
+function setVol(e, v) { if (e.gain) { e.gain.gain.value = v; e.el.volume = 1; } else e.el.volume = clamp(v, 0, 1); }
+function syncMedia(t, playing) {
+  for (const c of doc.clips) {
+    const m = Media.get(c.mediaId);
+    if (!m || !(m.kind === 'video' || m.kind === 'audio')) continue;
+    const active = t >= c.start && t < clipEnd(c);
+    const soon = !active && c.start > t && c.start - t < sec(1.5);
+    if (!active && !soon) { const e = Els.get(c.id); if (e && !e.el.paused) e.el.pause(); continue; }
+    const e = elFor(c);
+    const s = srcSec(c, active ? t : c.start);
+    if (active) {
+      const tm = doc.tracks[c.track]?.muted;
+      setVol(e, tm ? 0 : c.volume * fadeAt(c, t));
+      if (e.el.playbackRate !== c.speed) e.el.playbackRate = c.speed;
+      if (playing) {
+        if (e.el.paused) { e.el.currentTime = s; e.el.play().catch(() => {}); }
+        else if (Math.abs(e.el.currentTime - s) > 0.3) e.el.currentTime = s;
+      } else {
+        if (!e.el.paused) e.el.pause();
+        if (!e.el.seeking && Math.abs(e.el.currentTime - s) > 0.6 / FPS) e.el.currentTime = s;
+      }
+    } else {
+      if (!e.el.paused) e.el.pause();
+      if (!e.el.seeking && Math.abs(e.el.currentTime - s) > 0.05) e.el.currentTime = s;
+    }
+  }
+}
+
+// ---------- 合成器：把每一格畫到 canvas ----------
+function fxFilter(fx) {
+  const L = LOOKS[fx.look] || LOOKS.none;
+  let f = L.css || '';
+  if (fx.exposure) f += `brightness(${(1 + fx.exposure / 100 * 0.8).toFixed(3)}) `;
+  if (fx.contrast) f += `contrast(${(1 + fx.contrast / 100 * 0.7).toFixed(3)}) `;
+  if (fx.saturation) f += `saturate(${(1 + fx.saturation / 100).toFixed(3)}) `;
+  return f.trim() || 'none';
+}
+function drawGen(c, t, W, H) {
+  if (genCv.width !== W || genCv.height !== H) { genCv.width = W; genCv.height = H; }
+  const g = genCtx, local = toSec(c.inPt + (t - c.start) * c.speed), k = c.gen?.kind;
+  g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+  if (k === 'countdown') {      // 膠卷片頭倒數
+    const total = toSec(c.dur * c.speed) || 3, left = Math.max(1, Math.ceil(total - local)), frac = local % 1;
+    g.fillStyle = '#2b2b2b'; g.fillRect(0, 0, W, H);
+    const r = Math.min(W, H) * .36, cx = W / 2, cy = H / 2;
+    g.fillStyle = '#6a6a6a'; g.beginPath(); g.moveTo(cx, cy); g.arc(cx, cy, r * 1.6, -Math.PI / 2, -Math.PI / 2 + frac * Math.PI * 2); g.closePath(); g.fill();
+    g.strokeStyle = '#e8e8e8'; g.lineWidth = Math.max(2, H / 180);
+    g.beginPath(); g.moveTo(0, cy); g.lineTo(W, cy); g.moveTo(cx, 0); g.lineTo(cx, H); g.stroke();
+    for (const rr of [r, r * 1.12]) { g.beginPath(); g.arc(cx, cy, rr, 0, Math.PI * 2); g.stroke(); }
+    g.fillStyle = '#f2f2f2'; g.font = `700 ${Math.round(r * 1.25)}px "JetBrains Mono", monospace`; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(left), cx, cy + r * .06);
+  } else if (k === 'bars') {
+    const cols = ['#c0c0c0', '#c0c000', '#00c0c0', '#00c000', '#c000c0', '#c00000', '#0000c0'];
+    cols.forEach((col, i) => { g.fillStyle = col; g.fillRect(Math.floor(i * W / 7), 0, Math.ceil(W / 7) + 1, H * .75); });
+    const lows = ['#0000c0', '#131313', '#c000c0', '#131313', '#00c0c0', '#131313', '#c0c0c0'];
+    lows.forEach((col, i) => { g.fillStyle = col; g.fillRect(Math.floor(i * W / 7), H * .75, Math.ceil(W / 7) + 1, H * .25); });
+  } else if (k === 'gradient') {
+    const h = (local * 24) % 360, gr = g.createLinearGradient(0, 0, W, H);
+    gr.addColorStop(0, `hsl(${h},62%,38%)`); gr.addColorStop(.55, `hsl(${(h + 50) % 360},70%,55%)`); gr.addColorStop(1, `hsl(${(h + 110) % 360},60%,30%)`);
+    g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.globalAlpha = .18; g.fillStyle = '#fff';
+    for (let i = 0; i < 6; i++) { g.beginPath(); g.arc(W * (.15 + i * .15) + Math.sin(local + i) * W * .05, H * (.3 + .4 * Math.sin(local * .6 + i * 1.7)), H * (.08 + i * .02), 0, Math.PI * 2); g.fill(); }
+  } else {
+    g.fillStyle = c.gen?.color || '#000'; g.fillRect(0, 0, W, H);
+  }
+  g.restore();
+  return genCv;
+}
+function drawVisual(c, t) {
+  const W = cv.width, H = cv.height;
+  const m = Media.get(c.mediaId);
+  let src = null, sw = W, sh = H;
+  if (!m) {     // 媒體離線
+    ctx.fillStyle = '#4a1210'; ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.font = `700 ${H / 16}px ${getComputedStyle(document.body).fontFamily}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('媒體離線：' + (c.offlineName || ''), W / 2, H / 2); ctx.font = `500 ${H / 30}px sans-serif`;
+    ctx.fillText('把同名檔案匯入素材箱就會自動接回', W / 2, H / 2 + H / 12);
+    return;
+  }
+  if (m.kind === 'video') { const e = elFor(c); if (e.el.readyState < 2) return; src = e.el; sw = e.el.videoWidth; sh = e.el.videoHeight; }
+  else if (m.kind === 'image') { src = m.img; sw = m.w; sh = m.h; }
+  else if (m.kind === 'gen') { src = drawGen(c, t, W, H); }
+  if (!src || !sw || !sh) return;
+  const tf = c.tf, fx = c.fx, L = LOOKS[fx.look] || LOOKS.none;
+  const fit = Math.min(W / sw, H / sh) * tf.scale / 100, dw = sw * fit, dh = sh * fit;
+  ctx.save();
+  ctx.globalAlpha = clamp(tf.opacity / 100 * fadeAt(c, t), 0, 1);
+  ctx.translate(W / 2 + tf.x / 100 * W / 2, H / 2 + tf.y / 100 * H / 2);
+  ctx.rotate(tf.rot * Math.PI / 180);
+  ctx.filter = fxFilter(fx);
+  ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
+  ctx.filter = 'none';
+  // 色溫與風格色調：用柔光混合疊色
+  const tints = [...(L.tint || [])];
+  if (fx.temp) tints.push(fx.temp > 0 ? `rgba(255,140,40,${(fx.temp / 100 * .45).toFixed(3)})` : `rgba(40,120,255,${(-fx.temp / 100 * .45).toFixed(3)})`);
+  if (tints.length) {
+    ctx.globalCompositeOperation = 'soft-light';
+    if (fx.look === 'teal' && tints.length >= 2) {   // 暗部偏青、亮部偏橙
+      const gr = ctx.createLinearGradient(0, dh / 2, 0, -dh / 2); gr.addColorStop(0, tints[0]); gr.addColorStop(1, tints[1]);
+      ctx.fillStyle = gr; ctx.fillRect(-dw / 2, -dh / 2, dw, dh); tints.splice(0, 2);
+    }
+    for (const col of tints) { ctx.fillStyle = col; ctx.fillRect(-dw / 2, -dh / 2, dw, dh); }
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  if (L.fade) { ctx.fillStyle = `rgba(40,30,25,${L.fade})`; ctx.globalCompositeOperation = 'lighten'; ctx.fillRect(-dw / 2, -dh / 2, dw, dh); ctx.globalCompositeOperation = 'source-over'; }
+  if (fx.vignette > 0) {
+    const r = Math.hypot(dw, dh) / 2, gr = ctx.createRadialGradient(0, 0, r * .35, 0, 0, r);
+    gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, `rgba(0,0,0,${(fx.vignette / 100 * .85).toFixed(3)})`);
+    ctx.fillStyle = gr; ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
+  }
+  ctx.restore();
+}
+function wrapText(text, maxW) {
+  const lines = [];
+  for (const para of String(text).split('\n')) {
+    let line = '';
+    // 中文逐字斷行；英文單字盡量不拆開
+    const tokens = para.match(/[A-Za-z0-9'’\-.,!?]+\s*|\s+|./gu) || [''];
+    for (const tk of tokens) {
+      if (ctx.measureText(line + tk).width > maxW && line) { lines.push(line.trimEnd()); line = tk.trimStart(); }
+      else line += tk;
+    }
+    lines.push(line);
+  }
+  return lines;
+}
+function drawText(c, t) {
+  const W = cv.width, H = cv.height, tx = c.text;
+  const size = Math.round(H * tx.size / 100) || 20;
+  ctx.save();
+  ctx.globalAlpha = fadeAt(c, t);
+  ctx.font = `${tx.bold ? 700 : 500} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  const lines = wrapText(tx.content, W * .86), lh = size * 1.35, total = lines.length * lh;
+  let y0 = tx.pos === 'top' ? H * .08 + lh / 2 : tx.pos === 'center' ? H / 2 - total / 2 + lh / 2 : H * .92 - total + lh / 2;
+  lines.forEach((ln, i) => {
+    const y = y0 + i * lh;
+    if (tx.bg && ln) {
+      const w = ctx.measureText(ln).width + size * .8;
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - w / 2, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(W / 2 - w / 2, y - lh / 2 + 2, w, lh - 4); ctx.fill();
+    } else {
+      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(ln, W / 2, y);
+    }
+    ctx.fillStyle = tx.color || '#fff'; ctx.fillText(ln, W / 2, y);
+  });
+  ctx.restore();
+}
+function draw(t) {
+  const W = cv.width, H = cv.height;
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  for (const tr of ['V1', 'V2']) { if (doc.tracks[tr].muted) continue; const c = clipAt(tr, t); if (c) drawVisual(c, t); }
+  if (!doc.tracks.T1.muted) { const c = clipAt('T1', t); if (c) drawText(c, t); }
+  if (UI.safe && !UI.exporting) {
+    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = Math.max(1, H / 540); ctx.setLineDash([H / 60, H / 90]);
+    ctx.strokeRect(W * .05, H * .05, W * .9, H * .9); ctx.strokeRect(W * .1, H * .1, W * .8, H * .8); ctx.setLineDash([]);
+  }
+}
+
+// ---------- 播放控制 ----------
+let playT0 = 0, playW0 = 0;
+function play() {
+  if (UI.playing) return;
+  ensureAudio();
+  const end = seqDur(); if (!end) { toast('時間軸是空的，先放一些素材上去'); return; }
+  if (UI.playhead >= end - TPF) UI.playhead = 0;
+  UI.playing = true; playT0 = UI.playhead; playW0 = performance.now(); updatePlayBtn();
+}
+function pause() { if (!UI.playing) return; UI.playing = false; for (const e of Els.values()) e.el.pause(); UI.playhead = snapF(UI.playhead); needDraw = true; updatePlayBtn(); updateTC(); }
+function togglePlay() { UI.playing ? pause() : play(); }
+function seek(t) { const was = UI.playing; if (was) pause(); UI.playhead = clamp(snapF(t), 0, Math.max(seqDur(), 0)); needDraw = true; updateTC(); if (was) play(); }
+function updatePlayBtn() { $('bPlay').textContent = UI.playing ? '❚❚' : '▶'; $('bPlay').setAttribute('aria-label', UI.playing ? '暫停' : '播放'); }
+function loop(now) {
+  if (UI.playing) {
+    const t = playT0 + (now - playW0) / 1000 * TPS;
+    const end = seqDur();
+    if (t >= end) { UI.playhead = end; pause(); if (UI.exporting) finishExport(); }
+    else UI.playhead = t;
+    needDraw = true;
+  }
+  syncMedia(UI.playhead, UI.playing);
+  if (needDraw) { draw(UI.playhead); needDraw = UI.playing; updatePH(); updateTC(); }
+  if (UI.exporting) { const d = seqDur() || 1; $('exBar').style.width = (UI.playhead / d * 100).toFixed(1) + '%'; $('exStat').textContent = `錄製中… ${tc(UI.playhead)} / ${tc(d)}`; }
+  requestAnimationFrame(loop);
+}
+
+/* =====================================================================
+ * 介面：素材箱、時間軸、屬性面板
+ * ===================================================================== */
+function changed(light) {
+  // 清掉已刪除片段的媒體元素
+  const ids = new Set(doc.clips.map(c => c.id));
+  for (const id of [...Els.keys()]) if (!ids.has(id)) dropEl(id);
+  if (UI.sel && !ids.has(UI.sel)) UI.sel = null;
+  if (UI.playhead > seqDur()) UI.playhead = seqDur();
+  applyFormat();
+  needDraw = true;
+  renderTimeline();
+  if (!light) renderInspector();
+  $('projName').value = doc.name;
+  $('bUndo').disabled = !undoStack.length; $('bRedo').disabled = !redoStack.length;
+  updateTC();
+}
+function renderAll() { renderBin(); changed(); }
+function applyFormat() {
+  const [w, h] = FORMATS[doc.format] || FORMATS.hd720;
+  if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  $('fmt').value = doc.format;
+  $('seqInfo').textContent = `${w}×${h}・${FPS} fps`;
+  if (matchMedia('(max-width:980px)').matches) $('screen').style.aspectRatio = `${w}/${h}`; else $('screen').style.aspectRatio = '';
+}
+function updateTC() { $('tc').innerHTML = `${tc(UI.playhead)} <small>/ ${tc(seqDur())}</small>`; }
+
+function renderBin() {
+  const mine = [...Media.values()].filter(m => !m.builtin);
+  $('binCount').textContent = mine.length ? `${mine.length} 個` : '';
+  const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
+      <div class="th" style="${m.thumb ? `background-image:url(${m.thumb})` : m.kind === 'audio' ? 'background:linear-gradient(135deg,#1e3a30,#3b9372)' : 'background:linear-gradient(135deg,#3a2418,#a8613f)'}">${m.thumb ? '' : (m.icon || '♪')}</div>
+      <span class="kind" style="background:${{ video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${{ video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>
+      <button class="add" data-add="${m.id}" title="接在時間軸最後">＋</button>
+      <div class="nm">${esc(m.name)}</div><div class="du">${m.kind === 'image' ? '靜態圖片' : fmtDur(m.dur)}</div></div>`;
+  $('bin').innerHTML = mine.length ? mine.map(card).join('') : '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>';
+  $('binGen').innerHTML = [...Media.values()].filter(m => m.builtin).map(card).join('') +
+    `<div class="mi" data-text="1" title="在播放頭加字幕"><div class="th" style="background:linear-gradient(135deg,#2c2240,#8e6cc4);font-family:var(--f-logo);color:#fff">字</div><span class="kind" style="background:var(--t)">文字</span><button class="add" data-addtext="1">＋</button><div class="nm">字幕／標題</div><div class="du">3.0 秒</div></div>`;
+}
+
+function rowH(kind) { return kind === 'text' ? 38 : kind === 'video' ? 58 : 48; }
+function renderTimeline() {
+  const pps = UI.pps, total = Math.max(seqDur() + sec(20), sec(60));
+  const width = Math.ceil(toSec(total) * pps);
+  $('inner').style.width = width + 'px';
+  // 軌道標頭
+  $('heads').innerHTML = '<div class="rul"></div>' + TRACKS.map(t => `<div class="head" style="height:${rowH(t.kind)}px"><div><b>${t.id}</b><span>${t.label}</span></div>
+     <button data-mute="${t.id}" aria-pressed="${doc.tracks[t.id].muted}" title="${t.kind === 'audio' ? '靜音' : '隱藏'}這條軌道">${t.kind === 'audio' ? (doc.tracks[t.id].muted ? '🔇' : '🔊') : (doc.tracks[t.id].muted ? '◌' : '◉')}</button></div>`).join('');
+  // 尺規：依縮放挑刻度間距
+  const steps = [0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300];
+  const step = steps.find(s => s * pps >= 70) || 600;
+  let lbl = '';
+  for (let s = 0; s * pps < width; s += step) lbl += `<span class="lb" style="left:${s * pps}px">${s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : s + 's'}</span>`;
+  $('ruler').innerHTML = lbl; $('ruler').style.setProperty('--minor', Math.max(4, step * pps / 5) + 'px');
+  // 片段
+  $('rows').innerHTML = TRACKS.map(t => {
+    const cl = clipsOn(t.id).map(c => {
+      const m = Media.get(c.mediaId), x = toSec(c.start) * pps, w = Math.max(3, toSec(c.dur) * pps);
+      let bg = '';
+      if (m && m.kind === 'video' && m.thumb) bg = `background-image:url(${m.thumb})`;
+      else if (m && m.kind === 'image') bg = `background-image:url(${m.thumb})`;
+      else if (m && m.kind === 'audio' && m.wave) bg = `background-image:url(${m.wave});background-size:${toSec(m.dur) * pps / c.speed}px 100%;background-position:${-toSec(c.inPt) * pps / c.speed}px 0`;
+      const kind = c.type === 'text' ? 'text' : (m ? m.kind : c.type);
+      const badges = [c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : ''].filter(Boolean).join(' · ');
+      return `<div class="clip k-${kind} ${UI.sel === c.id ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
+        ${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
+        <div class="hd l"></div><span class="nm">${esc(clipName(c))}</span>${badges ? `<span class="bd">${esc(badges)}</span>` : ''}<div class="hd r"></div></div>`;
+    }).join('');
+    return `<div class="trow k-${t.kind} h-${t.kind}" data-track="${t.id}">${cl}</div>`;
+  }).join('');
+  updatePH();
+}
+function updatePH() {
+  const x = toSec(UI.playhead) * UI.pps;
+  $('ph').style.transform = `translateX(${x}px)`;
+  if (UI.playing) {      // 播放時自動捲動
+    const b = $('tlBody'), vis = b.clientWidth - 96;
+    if (x > b.scrollLeft + vis - 40 || x < b.scrollLeft) b.scrollLeft = Math.max(0, x - 60);
+  }
+}
+
+// ---------- 屬性面板 ----------
+const rng = (k, label, val, min, max, step, unit = '') => `<div class="field"><label for="f_${k}">${label}</label><input type="range" id="f_${k}" data-k="${k}" min="${min}" max="${max}" step="${step}" value="${val}"><output>${val}${unit}</output></div>`;
+function renderInspector() {
+  const c = getClip(UI.sel);
+  // 片段屬性
+  if (!c) {
+    $('pProps').innerHTML = `<div class="empty"><b>點時間軸上的片段</b>就能在這裡調整速度、音量、淡入淡出、位置大小或字幕文字。<br><br>
+      目前專案：${doc.clips.length} 個片段，總長 ${tc(seqDur())}。<br>不知道從哪開始？切到「小柯助手」用中文告訴它你想做什麼。</div>`;
+  } else {
+    const m = Media.get(c.mediaId);
+    let h = `<div class="sec"><h4>片段 #${c.id}・${c.track}<span class="muted">${tc(c.start)} → ${tc(clipEnd(c))}</span></h4><div style="font-weight:500;word-break:break-all">${esc(clipName(c))}</div></div>`;
+    if (c.type === 'text') {
+      h += `<div class="sec"><h4>文字內容</h4><textarea id="f_text" rows="3">${esc(c.text.content)}</textarea></div>
+        <div class="sec"><h4>樣式</h4>
+        ${rng('size', '字級', c.text.size, 2, 20, .2, '%')}
+        <div class="field"><label>位置</label><div class="seg" data-seg="position">${[['top', '上'], ['center', '中'], ['bottom', '下']].map(([v, l]) => `<button data-v="${v}" aria-pressed="${c.text.pos === v}">${l}</button>`).join('')}</div><span></span></div>
+        <div class="field"><label for="f_color">顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
+        <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 黑色底框</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div></div>`;
+    }
+    if (c.type === 'video' || c.type === 'audio') h += `<div class="sec"><h4>速度與音量</h4>${rng('speed', '速度', c.speed, .25, 4, .25, '×')}${rng('volume', '音量', Math.round(c.volume * 100), 0, 200, 1, '%')}
+      <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>`;
+    h += `<div class="sec"><h4>轉場</h4>${rng('fadeIn', '淡入', c.fadeIn, 0, Math.min(5, toSec(c.dur)), .1, 's')}${rng('fadeOut', '淡出', c.fadeOut, 0, Math.min(5, toSec(c.dur)), .1, 's')}</div>`;
+    if (c.type !== 'text' && c.type !== 'audio') h += `<div class="sec"><h4>位置與大小 <button class="btn ghost" data-act="resetTf" style="padding:2px 6px">重設</button></h4>
+      ${rng('scale', '縮放', c.tf.scale, 10, 300, 1, '%')}${rng('x', '左右', c.tf.x, -100, 100, 1)}${rng('y', '上下', c.tf.y, -100, 100, 1)}${rng('rotation', '旋轉', c.tf.rot, -180, 180, 1, '°')}${rng('opacity', '不透明', c.tf.opacity, 0, 100, 1, '%')}</div>`;
+    h += `<div class="row2"><button class="btn" data-act="split">✂ 在播放頭分割</button><button class="btn" data-act="dup">複製</button><button class="btn" data-act="del" style="color:var(--danger)">刪除</button></div>`;
+    if (m && m.kind === 'video') h += `<p class="note">原始素材：${m.w}×${m.h}，長 ${fmtDur(m.dur)}。從第 ${toSec(c.inPt).toFixed(2)} 秒開始取用。</p>`;
+    $('pProps').innerHTML = h;
+  }
+  // 調色
+  const vc = c && c.type !== 'text' && c.type !== 'audio' ? c : null;
+  if (!vc) $('pColor').innerHTML = `<div class="empty">選一個<b>畫面片段</b>（影片、圖片或內建素材）就能調色。<br>想一次套用到整支影片？選好一段之後按下方的「套用到全部畫面片段」。</div>`;
+  else {
+    const fx = vc.fx;
+    $('pColor').innerHTML = `<div class="sec"><h4>風格（Creative）</h4><div class="looks">${Object.entries(LOOKS).map(([k, L]) => `<button class="look" data-look="${k}" aria-pressed="${fx.look === k}"><i style="background:${L.sw};filter:${L.css || 'none'}"></i><span>${L.name}</span></button>`).join('')}</div></div>
+     <div class="sec"><h4>基本校正 <button class="btn ghost" data-act="resetFx" style="padding:2px 6px">全部歸零</button></h4>
+      ${rng('exposure', '亮度', fx.exposure, -100, 100, 1)}${rng('contrast', '對比', fx.contrast, -100, 100, 1)}${rng('saturation', '飽和度', fx.saturation, -100, 100, 1)}${rng('temperature', '色溫', fx.temp, -100, 100, 1)}</div>
+     <div class="sec"><h4>暈影</h4>${rng('vignette', '強度', fx.vignette, 0, 100, 1)}</div>
+     <button class="btn" data-act="fxAll">把這組調色套用到全部畫面片段</button>`;
+  }
+}
+
+/* =====================================================================
+ * 小柯助手：先用本地規則聽懂常見說法；聽不懂且可用 Claude 時，交給 Claude 呼叫指令工具。
+ * ===================================================================== */
+const chatTurns = [];
+let sampleFn = null, askCtl = null;
+function say(who, text) { const d = document.createElement('div'); d.className = 'msg ' + who; d.textContent = text; $('chat').appendChild(d); d.scrollIntoView({ block: 'end' }); return d; }
+function projectSummary() {
+  return {
+    畫面: FORMATS[doc.format].join('x'), 總長秒: +toSec(seqDur()).toFixed(2), 播放頭秒: +toSec(UI.playhead).toFixed(2), 選取片段: UI.sel,
+    素材: [...Media.values()].map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
+    片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
+      clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
+      ...(c.type === 'text' ? { 文字: c.text.content } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look }),
+    })),
+  };
+}
+function localIntent(s) {
+  const t = s.replace(/\s+/g, '');
+  const all = /全部|所有|整支|每一段|每段/.test(t);
+  const look = Object.entries({ mono: /黑白/, vintage: /復古|懷舊|底片/, warm: /暖/, cool: /冷/, teal: /青橙|電影感/, punch: /高對比|鮮豔/, soft: /柔和/, none: /原色|還原顏色|取消調色/ }).find(([, r]) => r.test(t));
+  let m;
+  if (/^(復原|上一步|undo)$/i.test(t)) return ['edit.undo', {}];
+  if (/^(重做|redo)$/i.test(t)) return ['edit.redo', {}];
+  if (/^(播放|開始播放|play)$/i.test(t)) return ['playback.play', {}];
+  if (/^(暫停|停|停止)$/.test(t)) return ['playback.pause', {}];
+  if ((m = t.match(/^(?:加|新增|插入)?(字幕|標題)[:：「『"]?(.+?)[」』"]?$/))) return ['text.add', { text: m[2], style: m[1] === '標題' ? 'title' : 'subtitle' }];
+  if (/^(在播放頭)?(分割|切開|剪開|切一刀)$/.test(t)) return ['timeline.split', {}];
+  if (/^(移除|刪除|去掉)(所有)?(空隙|空白)$/.test(t)) return ['timeline.closeGaps', {}];
+  if (/^(刪除|刪掉)(這段|片段)?$/.test(t)) return ['timeline.delete', {}];
+  if (look && t.length <= 14) return ['color.set', { look: look[0], all: all || !UI.sel }];
+  if (/淡入淡出/.test(t) && t.length <= 14) return ['clip.set', { fadeIn: 1, fadeOut: 1, all: all || !UI.sel, type: 'video' }];
+  if ((m = t.match(/^(?:變成|改成|調成)?(\d+(?:\.\d+)?)倍速?$/))) return ['clip.set', { speed: Number(m[1]) }];
+  if ((m = t.match(/^(?:跳到|移到)(\d+(?:\.\d+)?)秒$/))) return ['playback.seek', { seconds: Number(m[1]) }];
+  if (/^(直式|9:16|短影音格式)$/.test(t)) return ['sequence.setFormat', { format: 'vert' }];
+  if (/^(匯出|輸出)(影片)?$/.test(t)) return ['ui.export', {}];
+  return null;
+}
+function runLocal(id, p) {
+  if (id === 'ui.export') { openExport(); return '已打開匯出視窗'; }
+  return exec(id, p);
+}
+const KK_RULES = () => `你是「小柯」，「小柯影音剪輯助手」網頁裡的剪輯助理。使用者用繁體中文描述想做的剪輯（可能有錯字或口語，請寬容理解）。
+做法：
+1. 先呼叫 get_project 看目前的素材與時間軸（時間單位一律是秒，clipId 是數字）。
+2. 用 run_command 執行指令，需要時可以連續呼叫好幾次。只用真的存在的 clipId 和 mediaId。
+3. 做完後用繁體中文、一到三句話說明你做了什麼。如果指令失敗，看錯誤訊息調整後再試一次，還是不行就說明原因。
+4. 你看不到畫面也聽不到聲音，所以不能自動聽打字幕；但可以幫忙寫字幕文案、標題、分段建議，並用 captions.addMany 或 text.add 放上去。
+5. 要求不清楚或會刪掉很多東西時，先問一句確認。
+軌道：T1 字幕，V2 疊加畫面（在 V1 上面），V1 主畫面，A1 音訊，A2 配樂。
+可用指令（command：參數說明）：
+${Object.values(Commands).map(c => `- ${c.id}（${c.label}）：${c.params}`).join('\n')}`;
+async function ask(text) {
+  text = text.trim(); if (!text) return;
+  say('me', text);
+  const li = localIntent(text);
+  if (li && (!sampleFn || text.replace(/\s/g, '').length <= 16)) {
+    try { say('kk', '好的，' + runLocal(li[0], li[1]) + '。'); } catch (e) { say('kk', e.message); }
+    return;
+  }
+  if (!sampleFn) { say('kk', '我目前只聽得懂簡單的說法，例如「分割」「黑白」「字幕：大家好」「2倍速」「移除空隙」「匯出」。在 Claude 裡開啟這個頁面並允許使用 Claude，我就能聽懂更完整的句子。'); return; }
+  const bubble = say('kk', '思考中…');
+  const before = snapshot(); let didChange = false;
+  askCtl = new AbortController();
+  $('askGo').textContent = '停止';
+  chatTurns.push({ role: 'user', content: text });
+  try {
+    const { text: ans } = await sampleFn([{ role: 'user', content: KK_RULES() }, ...chatTurns.slice(-10)], {
+      modelTier: 'quick', cache: false, signal: askCtl.signal,
+      onText: ({ text }) => { bubble.textContent = text; },
+      tools: [
+        { name: 'get_project', description: '取得目前專案狀態：畫面格式、播放頭、所有素材（mediaId）與時間軸片段（clipId、軌道、開始/結束秒數、文字、速度、風格）。', execute: () => projectSummary() },
+        {
+          name: 'run_command', description: '執行一個剪輯指令，回傳結果文字。失敗時會丟出錯誤訊息。可用指令清單在對話開頭。',
+          inputSchema: { type: 'object', properties: { command: { type: 'string', description: '指令 id，例如 timeline.split' }, params: { type: 'object', description: '指令參數，時間單位為秒' } }, required: ['command'] },
+          execute: (input, cx) => {
+            if (cx.signal.aborted) throw new Error('已停止');
+            const id = String(input.command || '');
+            const r = id === 'ui.export' ? (openExport(), '已打開匯出視窗') : exec(id, input.params && typeof input.params === 'object' ? input.params : {});
+            if (Commands[id]?.mutates) didChange = true;
+            bubble.textContent = `正在執行：${Commands[id]?.label || id}…`;
+            return String(r);
+          },
+        },
+      ],
+    });
+    chatTurns.push({ role: 'assistant', content: ans });
+    if (didChange) addUndoChip(before);
+  } catch (e) {
+    chatTurns.pop();
+    const map = { cancelled: '已停止。', not_granted: '你沒有允許這個頁面使用 Claude，所以我只能聽懂簡單的指令。', rate_limited: '現在請求太頻繁，請稍等一下再試。', refused: '這個要求我沒辦法處理，換個說法試試。' };
+    bubble.textContent = (e && e.text ? e.text + '\n' : '') + (map[e?.code] || '剛剛連線出了點問題，請再送一次。');
+    if (e?.code === 'not_granted' || e?.code === 'sampling_disabled') sampleFn = null;
+    if (didChange) addUndoChip(before);
+  } finally { askCtl = null; $('askGo').textContent = '送出'; }
+}
+function addUndoChip(before) {
+  const d = document.createElement('div'); d.className = 'chips';
+  const b = document.createElement('button'); b.className = 'chip'; b.textContent = '↶ 還原小柯剛剛的修改';
+  b.onclick = () => { redoStack.length = 0; undoStack.push(snapshot()); doc = JSON.parse(before); changed(); say('sys', '已還原到小柯修改之前'); d.remove(); };
+  d.appendChild(b); $('chat').appendChild(d);
+}
+function chatIntro() {
+  say('kk', '嗨，我是小柯！把素材拖進左邊素材箱，再告訴我你想怎麼剪。我可以分割、刪除、調速度、調色、加淡入淡出、寫字幕和標題。');
+  const chips = document.createElement('div'); chips.className = 'chips';
+  for (const q of ['分割', '全部套用電影青橙', '全部加淡入淡出', '字幕：今天出發去旅行', '標題：小柯的旅行日記', '移除空隙', '把字幕都改成黃色', '幫我寫 3 句開場字幕', '匯出']) {
+    const b = document.createElement('button'); b.className = 'chip'; b.textContent = q; b.onclick = () => ask(q); chips.appendChild(b);
+  }
+  $('chat').appendChild(chips);
+}
+
+/* =====================================================================
+ * 匯出：canvas.captureStream + WebAudio → MediaRecorder（即時錄製）
+ * ===================================================================== */
+let rec = null, recChunks = [], recBlob = null, recCancel = false, recMime = '';
+const MIMES = [['video/mp4;codecs=avc1.42E01F,mp4a.40.2', 'MP4（H.264 + AAC）', 'mp4'], ['video/mp4', 'MP4', 'mp4'], ['video/webm;codecs=vp9,opus', 'WebM（VP9 + Opus）', 'webm'], ['video/webm;codecs=vp8,opus', 'WebM（VP8 + Opus）', 'webm'], ['video/webm', 'WebM', 'webm']];
+function openExport() {
+  pause();
+  const ok = typeof MediaRecorder !== 'undefined' ? MIMES.filter(m => MediaRecorder.isTypeSupported(m[0])) : [];
+  $('exFmt').innerHTML = ok.map((m, i) => `<option value="${i}">${m[1]}</option>`).join('') || '<option>這個瀏覽器不支援錄製</option>';
+  $('exFmt').dataset.list = JSON.stringify(ok);
+  $('exName').value = $('exName').value || doc.name;
+  $('exGo').disabled = !ok.length || !seqDur();
+  $('exNote').textContent = !seqDur() ? '時間軸是空的，先放一些素材再匯出。' : `匯出會從頭到尾即時播放一遍並錄下來，片長 ${fmtDur(seqDur())}，大約需要同樣的時間。匯出時請讓這個分頁保持在前景。`;
+  $('exportOv').hidden = false;
+}
+async function startExport() {
+  const list = JSON.parse($('exFmt').dataset.list || '[]'), pick = list[Number($('exFmt').value)] || list[0];
+  if (!pick) return;
+  ensureAudio(); if (AC) await AC.resume();
+  UI.exporting = true; recCancel = false; recChunks = []; recBlob = null; recMime = pick;
+  UI.sel = null; renderTimeline();
+  $('exGo').hidden = true; $('exSave').hidden = true; $('exVid').hidden = true; $('exCancel').hidden = false; $('exClose').disabled = true;
+  $('exStat').textContent = '準備中…';
+  // 預先把開頭的媒體定位好
+  UI.playhead = 0; syncMedia(0, false); needDraw = true;
+  await new Promise(r => setTimeout(r, 600));
+  const stream = cv.captureStream(FPS);
+  if (recDest) for (const tr of recDest.stream.getAudioTracks()) stream.addTrack(tr);
+  try { rec = new MediaRecorder(stream, { mimeType: pick[0], videoBitsPerSecond: Number($('exQ').value), audioBitsPerSecond: 192000 }); }
+  catch (e) { UI.exporting = false; $('exStat').textContent = '無法開始錄製：' + e.message; resetExportUI(); return; }
+  rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+  rec.onstop = () => {
+    UI.exporting = false; if (speaker) speaker.gain.value = 1;
+    if (recCancel) { $('exStat').textContent = '已取消匯出。'; resetExportUI(); return; }
+    recBlob = new Blob(recChunks, { type: pick[0].split(';')[0] });
+    $('exBar').style.width = '100%';
+    $('exStat').textContent = `完成！檔案大小 ${(recBlob.size / 1048576).toFixed(1)} MB。可以先在下面預覽，再儲存到電腦。`;
+    const v = $('exVid'); v.src = URL.createObjectURL(recBlob); v.hidden = false;
+    resetExportUI(); $('exSave').hidden = false;
+  };
+  if (speaker) speaker.gain.value = $('exMute').checked ? 0 : 1;
+  rec.start(500);
+  UI.playing = false; play();
+}
+function finishExport() { if (rec && rec.state !== 'inactive') setTimeout(() => rec.stop(), 250); }
+function cancelExport() { recCancel = true; pause(); if (rec && rec.state !== 'inactive') rec.stop(); else { UI.exporting = false; resetExportUI(); } }
+function resetExportUI() { $('exGo').hidden = false; $('exGo').textContent = '重新匯出'; $('exCancel').hidden = true; $('exClose').disabled = false; changed(); }
+async function saveFile(filename, data) {
+  let dl = null;
+  try { dl = window.claude ? await window.claude.use('downloads') : null; } catch { dl = null; }
+  if (!dl) {
+    // 一般網頁（例如 GitHub Pages）：用下載連結存檔
+    if (!window.claude) {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(data instanceof Blob ? data : new Blob([data]));
+      a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000); toast('已開始下載'); return true;
+    }
+    toast('這個檢視無法直接存檔。請在 Claude 裡開啟這個頁面，或在預覽影片上按右鍵另存。'); return false;
+  }
+  try { await dl.save({ filename, data }); toast('已交給瀏覽器儲存'); return true; }
+  catch (e) { if (e?.code !== 'declined') toast('儲存失敗：' + (e?.message || e?.code || '')); return false; }
+}
+
+// ---------- SRT 字幕 ----------
+function parseSrt(txt) {
+  const out = [], toS = s => { const m = s.trim().match(/(\d+):(\d+):(\d+)[,.](\d+)/); return m ? (+m[1]) * 3600 + (+m[2]) * 60 + (+m[3]) + (+m[4]) / 1000 : NaN; };
+  for (const blk of txt.replace(/\r/g, '').split(/\n\s*\n/)) {
+    const lines = blk.split('\n').filter(l => l.trim() !== '' && l.trim() !== 'WEBVTT');
+    const i = lines.findIndex(l => l.includes('-->')); if (i < 0) continue;
+    const [a, b] = lines[i].split('-->');
+    const s = toS(a), e = toS(b); if (isNaN(s) || isNaN(e)) continue;
+    out.push({ start: s, end: e, text: lines.slice(i + 1).join('\n').replace(/<[^>]+>/g, '') });
+  }
+  return out;
+}
+function toSrt() {
+  const f = t => { const ms = Math.round(toSec(t) * 1000); const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
+  return clipsOn('T1').map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
+}
+
+// ---------- 專案存檔 ----------
+function saveProject() {
+  const data = JSON.parse(JSON.stringify(doc));
+  for (const c of data.clips) { const m = Media.get(c.mediaId); if (m && !m.builtin) { c.offlineName = m.name; c.mediaId = null; } }
+  data.app = '小柯影音剪輯助手'; data.version = 1; data.tps = TPS;
+  saveFile((doc.name || '專案') + '.json', JSON.stringify(data, null, 1));
+}
+async function openProject(file) {
+  try {
+    const d = JSON.parse(await file.text());
+    if (!Array.isArray(d.clips)) throw new Error('不是小柯的專案檔');
+    undoStack.push(snapshot()); redoStack.length = 0;
+    doc = { name: d.name || '未命名專案', format: FORMATS[d.format] ? d.format : 'hd720', tracks: Object.assign(structuredClone(doc.tracks), d.tracks || {}), clips: d.clips, nextId: d.nextId || 1 };
+    for (const m of Media.values()) if (!m.builtin) relinkOffline(m);
+    UI.sel = null; UI.playhead = 0; changed();
+    const miss = [...new Set(doc.clips.filter(c => c.offlineName).map(c => c.offlineName))];
+    toast(miss.length ? `專案已開啟。請把這些檔案匯入素材箱：${miss.join('、')}` : '專案已開啟');
+  } catch (e) { toast('開啟失敗：' + e.message); }
+}
+
+/* =====================================================================
+ * 事件綁定
+ * ===================================================================== */
+let toastTimer = 0;
+function toast(msg) {
+  let t = document.querySelector('.toast'); if (!t) { t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); document.body.appendChild(t); }
+  t.textContent = msg; t.hidden = false; clearTimeout(toastTimer); toastTimer = setTimeout(() => { t.hidden = true; }, 3600);
+}
+function tryExec(id, p, opt) { try { const r = exec(id, p, opt); return r; } catch (e) { toast(e.message); return null; } }
+
+// 素材匯入
+$('fileIn').onchange = e => { importFiles([...e.target.files]); e.target.value = ''; };
+const drop = $('drop');
+['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, () => drop.classList.remove('over')));
+document.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
+document.addEventListener('drop', e => { if (e.dataTransfer?.files?.length) { e.preventDefault(); importFiles([...e.dataTransfer.files]); } });
+
+// 素材箱：加到時間軸 / 拖到軌道
+document.querySelector('.bin-p').addEventListener('click', e => {
+  const a = e.target.closest('[data-add]'); if (a) { tryExec('media.place', { mediaId: a.dataset.add }); return; }
+  if (e.target.closest('[data-addtext]')) { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); }
+});
+document.querySelector('.bin-p').addEventListener('dblclick', e => {
+  const mi = e.target.closest('[data-mid]'); if (mi) tryExec('media.place', { mediaId: mi.dataset.mid });
+  else if (e.target.closest('[data-text]')) tryExec('text.add', { text: '在這裡輸入字幕' });
+});
+document.querySelector('.bin-p').addEventListener('dragstart', e => {
+  const mi = e.target.closest('[data-mid]'); if (mi) { e.dataTransfer.setData('text/x-kk-media', mi.dataset.mid); e.dataTransfer.effectAllowed = 'copy'; }
+});
+$('rows').addEventListener('dragover', e => {
+  if (![...e.dataTransfer.types].includes('text/x-kk-media')) return;
+  e.preventDefault(); document.querySelectorAll('.trow.dropok').forEach(r => r.classList.remove('dropok')); e.target.closest('.trow')?.classList.add('dropok');
+});
+$('rows').addEventListener('dragleave', () => document.querySelectorAll('.trow.dropok').forEach(r => r.classList.remove('dropok')));
+$('rows').addEventListener('drop', e => {
+  const mid = e.dataTransfer.getData('text/x-kk-media'); if (!mid) return;
+  e.preventDefault(); e.stopPropagation();
+  const row = e.target.closest('.trow'); if (!row) return;
+  const x = e.clientX - $('inner').getBoundingClientRect().left;
+  const m = Media.get(mid); let track = row.dataset.track;
+  if (m && (m.kind === 'audio') !== (trackKind(track) === 'audio')) track = m.kind === 'audio' ? 'A1' : 'V1';
+  if (trackKind(track) === 'text') track = 'V2';
+  tryExec('media.place', { mediaId: mid, track, start: snapSec(x / UI.pps, null) });
+});
+
+// 時間軸：拖曳移動、修剪、選取、拉播放頭
+function snapPoints(exceptId) {
+  const pts = [0, toSec(UI.playhead)];
+  for (const c of doc.clips) if (c.id !== exceptId) pts.push(toSec(c.start), toSec(clipEnd(c)));
+  return pts;
+}
+function snapSec(s, exceptId) {
+  if (!UI.snap) return s;
+  const th = 8 / UI.pps; let best = s, bd = th;
+  for (const p of snapPoints(exceptId)) { const d = Math.abs(p - s); if (d < bd) { bd = d; best = p; } }
+  return best;
+}
+let drag = null;
+$('inner').addEventListener('pointerdown', e => {
+  if (UI.exporting) return;
+  const innerX = () => e.clientX - $('inner').getBoundingClientRect().left;
+  if (e.target.closest('#ruler')) {
+    drag = { mode: 'scrub' }; $('inner').setPointerCapture(e.pointerId);
+    seek(sec(Math.max(0, innerX() / UI.pps))); return;
+  }
+  const el = e.target.closest('.clip');
+  if (!el) {
+    if (UI.sel) { UI.sel = null; renderTimeline(); renderInspector(); }
+    if (e.target.closest('.trow')) seek(sec(Math.max(0, innerX() / UI.pps)));
+    return;
+  }
+  const c = getClip(el.dataset.cid); if (!c) return;
+  const mode = e.target.classList.contains('l') ? 'trimL' : e.target.classList.contains('r') ? 'trimR' : 'move';
+  drag = { mode, id: c.id, el, x0: e.clientX, y0: e.clientY, s0: toSec(c.start), e0: toSec(clipEnd(c)), moved: false, track: c.track };
+  $('inner').setPointerCapture(e.pointerId);
+  if (UI.sel !== c.id) { UI.sel = c.id; document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel'); renderInspector(); }
+});
+$('inner').addEventListener('pointermove', e => {
+  if (!drag) return;
+  if (drag.mode === 'scrub') { seek(sec(Math.max(0, (e.clientX - $('inner').getBoundingClientRect().left) / UI.pps))); return; }
+  const dx = e.clientX - drag.x0;
+  if (!drag.moved && Math.abs(dx) < 3 && Math.abs(e.clientY - drag.y0) < 3) return;
+  drag.moved = true;
+  const c = getClip(drag.id), ds = dx / UI.pps, pps = UI.pps;
+  if (drag.mode === 'move') {
+    const len = drag.e0 - drag.s0;
+    let ns = Math.max(0, drag.s0 + ds);
+    const sA = snapSec(ns, c.id), sB = snapSec(ns + len, c.id) - len;
+    ns = Math.abs(sA - ns) <= Math.abs(sB - ns) ? sA : sB; ns = Math.max(0, ns);
+    drag.ns = ns; drag.el.style.left = ns * pps + 'px';
+    const row = document.elementFromPoint(e.clientX, e.clientY)?.closest('.trow');
+    if (row && trackKind(row.dataset.track) === trackKind(c.track) && row.dataset.track !== drag.track) { drag.track = row.dataset.track; row.appendChild(drag.el); }
+  } else if (drag.mode === 'trimL') {
+    let ns = snapSec(drag.s0 + ds, c.id); ns = Math.min(ns, drag.e0 - 1 / FPS); ns = Math.max(0, ns);
+    const m = Media.get(c.mediaId);
+    if (m && (m.kind === 'video' || m.kind === 'audio')) ns = Math.max(ns, drag.s0 - toSec(c.inPt) / c.speed);
+    drag.ns = ns; drag.el.style.left = ns * pps + 'px'; drag.el.style.width = (drag.e0 - ns) * pps + 'px';
+  } else {
+    let ne = snapSec(drag.e0 + ds, c.id); ne = Math.max(ne, drag.s0 + 1 / FPS);
+    ne = Math.min(ne, drag.s0 + toSec(maxDurOf(c)));
+    drag.ne = ne; drag.el.style.width = (ne - drag.s0) * pps + 'px';
+  }
+});
+$('inner').addEventListener('pointerup', () => {
+  const d = drag; drag = null; if (!d || d.mode === 'scrub' || !d.moved) return;
+  if (d.mode === 'move') tryExec('timeline.move', { clipId: d.id, start: d.ns ?? d.s0, track: d.track });
+  else if (d.mode === 'trimL') tryExec('timeline.trim', { clipId: d.id, start: d.ns });
+  else tryExec('timeline.trim', { clipId: d.id, end: d.ne });
+});
+$('heads').addEventListener('click', e => { const b = e.target.closest('[data-mute]'); if (b) tryExec('track.mute', { track: b.dataset.mute, muted: !doc.tracks[b.dataset.mute].muted }); });
+
+// 屬性面板事件（滑桿連續拖動合併成一個復原步驟）
+const PROP_MAP = { speed: ['clip.set', v => ({ speed: v })], volume: ['clip.set', v => ({ volume: v / 100 })], fadeIn: ['clip.set', v => ({ fadeIn: v })], fadeOut: ['clip.set', v => ({ fadeOut: v })],
+  scale: ['clip.set', v => ({ scale: v })], x: ['clip.set', v => ({ x: v })], y: ['clip.set', v => ({ y: v })], rotation: ['clip.set', v => ({ rotation: v })], opacity: ['clip.set', v => ({ opacity: v })],
+  size: ['text.set', v => ({ size: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
+  temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })] };
+for (const pane of ['pProps', 'pColor']) {
+  $(pane).addEventListener('input', e => {
+    const k = e.target.dataset.k, id = UI.sel;
+    if (k && PROP_MAP[k]) {
+      const v = Number(e.target.value); const o = e.target.nextElementSibling; if (o) o.textContent = v + (o.textContent.match(/[^\d.\-]+$/)?.[0] || '');
+      const [cmd, f] = PROP_MAP[k]; tryExec(cmd, Object.assign({ clipId: id }, f(v)), { coalesce: k + id, light: true });
+    } else if (e.target.id === 'f_text') tryExec('text.set', { clipId: id, text: e.target.value }, { coalesce: 'text' + id, light: true });
+    else if (e.target.id === 'f_color') tryExec('text.set', { clipId: id, color: e.target.value }, { coalesce: 'tcolor' + id, light: true });
+  });
+  $(pane).addEventListener('change', e => {
+    const id = UI.sel;
+    if (e.target.id === 'f_bg') tryExec('text.set', { clipId: id, background: e.target.checked });
+    if (e.target.id === 'f_bold') tryExec('text.set', { clipId: id, bold: e.target.checked });
+    if (e.target.dataset.k === 'speed') renderInspector();
+  });
+  $(pane).addEventListener('click', e => {
+    const id = UI.sel, b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.look) { tryExec('color.set', { clipId: id, look: b.dataset.look }); return; }
+    if (b.closest('[data-seg]')) { tryExec('text.set', { clipId: id, position: b.dataset.v }); return; }
+    const act = b.dataset.act;
+    if (act === 'mute') { const c = getClip(id); tryExec('clip.set', { clipId: id, volume: c.volume === 0 ? 1 : 0 }); }
+    if (act === 'resetTf') tryExec('clip.set', { clipId: id, scale: 100, x: 0, y: 0, rotation: 0, opacity: 100 });
+    if (act === 'resetFx') tryExec('color.set', { clipId: id, reset: true });
+    if (act === 'fxAll') { const c = getClip(id); if (c) { const f = c.fx; tryExec('color.set', { all: true, type: 'video', reset: true, look: f.look, exposure: f.exposure, contrast: f.contrast, saturation: f.saturation, temperature: f.temp, vignette: f.vignette }); toast('已套用到全部畫面片段'); } }
+    if (act === 'split') tryExec('timeline.split', { clipId: id });
+    if (act === 'dup') tryExec('timeline.duplicate', { clipId: id });
+    if (act === 'del') tryExec('timeline.delete', { clipId: id });
+  });
+}
+function switchTab(tab) {
+  UI.tab = tab;
+  document.querySelectorAll('.tab').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === tab));
+  $('pProps').hidden = tab !== 'props'; $('pColor').hidden = tab !== 'color'; $('pKK').hidden = tab !== 'kk';
+  try { localStorage.setItem('kk-tab', tab); } catch { }
+}
+document.querySelectorAll('.tab').forEach(b => b.onclick = () => switchTab(b.dataset.tab));
+
+// 小柯輸入
+$('askGo').onclick = () => { if (askCtl) { askCtl.abort(); return; } const v = $('askIn').value; $('askIn').value = ''; ask(v); };
+$('askIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); $('askGo').click(); } });
+
+// 頂列與工具列
+$('bUndo').onclick = () => toast(undo()); $('bRedo').onclick = () => toast(redo());
+$('bPlay').onclick = togglePlay; $('bHome').onclick = () => seek(0); $('bEnd').onclick = () => seek(seqDur());
+$('bPrev').onclick = () => seek(UI.playhead - TPF); $('bNext').onclick = () => seek(UI.playhead + TPF);
+$('tSplit').onclick = () => tryExec('timeline.split', {}); $('tDel').onclick = () => tryExec('timeline.delete', {});
+$('tRip').onclick = () => tryExec('timeline.rippleDelete', {}); $('tDup').onclick = () => tryExec('timeline.duplicate', {});
+$('tGap').onclick = () => tryExec('timeline.closeGaps', {}); $('tText').onclick = () => { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); };
+$('snap').onchange = e => { UI.snap = e.target.checked; };
+$('safe').onchange = e => { UI.safe = e.target.checked; needDraw = true; };
+$('zoom').oninput = e => { UI.pps = Number(e.target.value); renderTimeline(); };
+$('fmt').onchange = e => tryExec('sequence.setFormat', { format: e.target.value });
+$('projName').onchange = e => tryExec('project.rename', { name: e.target.value });
+$('bExport').onclick = openExport;
+$('exGo').onclick = startExport; $('exCancel').onclick = cancelExport;
+$('exClose').onclick = () => { $('exportOv').hidden = true; };
+$('exSave').onclick = () => { if (recBlob) saveFile(($('exName').value || '小柯作品').replace(/[\\/:*?"<>|]/g, '_') + '.' + recMime[2], recBlob); };
+$('bKeys').onclick = () => { $('keysOv').hidden = false; }; $('keysClose').onclick = () => { $('keysOv').hidden = true; };
+$('bSave').onclick = saveProject; $('bOpen').onclick = () => $('projIn').click();
+$('projIn').onchange = e => { if (e.target.files[0]) openProject(e.target.files[0]); e.target.value = ''; };
+$('bSrtIn').onclick = () => $('srtIn').click();
+$('srtIn').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const items = parseSrt(await f.text()); if (!items.length) { toast('沒有讀到字幕，請確認是 SRT 或 VTT 格式'); return; } toast(tryExec('captions.addMany', { items }) || ''); };
+$('bSrtOut').onclick = async () => {
+  const s = toSrt(); if (!s) { toast('T1 軌道上還沒有字幕'); return; }
+  try { await navigator.clipboard.writeText(s); toast('SRT 內容已複製；也可以存成檔案'); } catch { }
+  saveFile((doc.name || '字幕') + '-字幕.srt.txt', s);
+};
+
+// 鍵盤快捷鍵
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input,textarea,select') && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
+  if (!$('exportOv').hidden || !$('keysOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; } return; }
+  const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
+  if (mod && k === 'z') { e.preventDefault(); toast(e.shiftKey ? redo() : undo()); return; }
+  if (mod && k === 'y') { e.preventDefault(); toast(redo()); return; }
+  if (mod) return;
+  const step = e.shiftKey ? 10 : 1;
+  switch (e.key) {
+    case ' ': e.preventDefault(); togglePlay(); break;
+    case 'k': case 'K': pause(); break;
+    case 'l': case 'L': play(); break;
+    case 'j': case 'J': seek(UI.playhead - sec(1)); break;
+    case 'ArrowLeft': e.preventDefault(); seek(UI.playhead - TPF * step); break;
+    case 'ArrowRight': e.preventDefault(); seek(UI.playhead + TPF * step); break;
+    case 'Home': seek(0); break;
+    case 'End': seek(seqDur()); break;
+    case 's': case 'S': tryExec('timeline.split', {}); break;
+    case 'd': case 'D': tryExec('timeline.duplicate', {}); break;
+    case 't': case 'T': tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); break;
+    case 'Delete': case 'Backspace': e.preventDefault(); tryExec(e.shiftKey ? 'timeline.rippleDelete' : 'timeline.delete', {}); break;
+    case '+': case '=': UI.pps = Math.min(300, UI.pps * 1.25); $('zoom').value = UI.pps; renderTimeline(); break;
+    case '-': case '_': UI.pps = Math.max(8, UI.pps / 1.25); $('zoom').value = UI.pps; renderTimeline(); break;
+  }
+});
+window.addEventListener('resize', () => applyFormat());
+
+// ---------- 範例專案（開啟時的初始狀態，可直接刪除） ----------
+function demo() {
+  const cd = makeClip('gen', 'V1', 0, sec(3), { mediaId: 'g0', gen: { kind: 'countdown' } });
+  const gr = makeClip('gen', 'V1', sec(3), sec(7), { mediaId: 'g1', gen: { kind: 'gradient' }, fadeOut: 1 });
+  const t1 = makeClip('text', 'T1', sec(3.5), sec(3), { text: textDefaults('小柯影音剪輯助手', 'title'), fadeIn: .5, fadeOut: .5 });
+  const t2 = makeClip('text', 'T1', sec(6.5), sec(3.5), { text: textDefaults('把影片拖進左邊素材箱，就能開始剪輯') });
+  doc.clips.push(cd, gr, t1, t2);
+  doc.name = '範例專案（可直接刪掉重來）';
+  UI.playhead = sec(4.2);
+}
+
+// ---------- 啟動 ----------
+demo();
+try { const tb = localStorage.getItem('kk-tab'); if (tb) switchTab(tb); } catch { }
+renderBin(); changed(); chatIntro(); updatePlayBtn();
+document.fonts && document.fonts.ready.then(() => { needDraw = true; });
+requestAnimationFrame(loop);
+// 有 Claude 可用時，小柯就能聽懂完整的句子
+(async () => {
+  try {
+    if (!window.claude || !window.claude.use) return;
+    const s = await window.claude.use('sample'); if (!s) return;
+    const lim = await s.limits().catch(() => null);
+    if (lim && lim.tools) { sampleFn = s; say('sys', '已連上 Claude：可以用完整的中文句子指揮小柯'); }
+  } catch { }
+})();
+</script>
+
+</body>
+</html>
