@@ -1,4 +1,10 @@
-# 小柯影音剪輯助手
+# 小柯影音剪輯助手 https://achir1015.github.io/xiaoke-video/ 
+
+<img width="1920" height="1033" alt="{6E07D7B6-B53D-4417-AA95-F761102BF115}" src="https://github.com/user-attachments/assets/a587eb77-1e18-461d-9895-9d197a921eb3" />
+
+影音分享
+
+https://github.com/user-attachments/assets/ee6193a8-c1f0-4b6f-aead-5e0764343530
 
 全繁體中文的**線上影片剪輯工具**，打開瀏覽器就能剪片。所有影片、音樂、圖片都只在你的瀏覽器裡處理，**不會上傳到任何伺服器**。
 
