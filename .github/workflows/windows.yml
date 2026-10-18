@@ -5,6 +5,8 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['index.html', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
