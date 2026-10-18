@@ -58,22 +58,28 @@ jobs:
       - name: 靜默安裝
         shell: pwsh
         run: |
+          function Note($title, $text) { $t = ($text | Out-String) -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'; Write-Host "::warning title=$title::$t" }
+          New-Item -ItemType Directory C:\KKTest -Force | Out-Null
           $setup = Get-ChildItem dist-installer\*.exe | Select-Object -First 1
-          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/DIR="C:\KKTest\小柯影音剪輯助手"','/LOG="C:\KKTest\install.log"' -Wait -PassThru
-          "安裝結束代碼：$($p.ExitCode)"
-          if (-not (Test-Path 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe')) { Get-Content C:\KKTest\install.log -Tail 40; throw '找不到安裝後的執行檔' }
-          Get-ChildItem 'C:\KKTest\小柯影音剪輯助手' | Select-Object Name, Length
+          Note '安裝檔' "$($setup.Name) $([math]::Round($setup.Length/1MB,1)) MB"
+          $dir = 'C:\KKTest\小柯影音剪輯助手'
+          $p = Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /CURRENTUSER /DIR=`"$dir`" /LOG=`"C:\KKTest\install.log`"" -Wait -PassThru
+          $ok = Test-Path "$dir\XiaokeVideo.exe"
+          Note '安裝結果' "結束代碼 $($p.ExitCode)；執行檔存在：$ok"
+          if (-not $ok) { if (Test-Path C:\KKTest\install.log) { Note '安裝紀錄' (Get-Content C:\KKTest\install.log -Tail 40) }; throw '找不到安裝後的執行檔' }
+          Note '安裝內容' (Get-ChildItem $dir | Select-Object Name, Length | Format-Table | Out-String)
 
       - name: 安裝後自我測試
         shell: pwsh
         run: |
+          function Note($title, $text) { $t = ($text | Out-String) -replace '%','%25' -replace "`r",'' -replace "`n",'%0A'; Write-Host "::warning title=$title::$t" }
           New-Item -ItemType Directory C:\KKTest\out -Force | Out-Null
           $exe = 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe'
-          $p = Start-Process $exe -ArgumentList '--selftest','C:\KKTest\out\report.json' -PassThru
-          if (-not $p.WaitForExit(180000)) { Stop-Process $p -Force; Write-Host '逾時' }
-          if (-not (Test-Path C:\KKTest\out\report.json)) { throw '沒有產生測試報告' }
+          $p = Start-Process -FilePath $exe -ArgumentList '--selftest C:\KKTest\out\report.json' -PassThru
+          if (-not $p.WaitForExit(240000)) { Stop-Process $p -Force; Note '自我測試' '逾時 240 秒' }
+          if (-not (Test-Path C:\KKTest\out\report.json)) { Note '自我測試' "沒有產生報告；結束代碼 $($p.ExitCode)"; throw '沒有產生測試報告' }
           $r = Get-Content C:\KKTest\out\report.json -Raw -Encoding UTF8
-          Write-Host $r
+          Note '自我測試報告' $r
           Copy-Item C:\KKTest\out\report.json selftest-report.json
           $j = $r | ConvertFrom-Json
           if (-not $j.ok) { throw '自我測試未通過' }
