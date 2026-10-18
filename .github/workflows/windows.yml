@@ -91,6 +91,15 @@ jobs:
           $u = 'C:\KKTest\小柯影音剪輯助手\unins000.exe'
           if (Test-Path $u) { Start-Process $u -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait; Start-Sleep 3; "解除安裝後執行檔還在嗎：$(Test-Path 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe')" }
 
+      - name: 收集測試結果
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory test-output -Force | Out-Null
+          Copy-Item C:\KKTest\out\* test-output\ -ErrorAction SilentlyContinue
+          Copy-Item C:\KKTest\install.log test-output\ -ErrorAction SilentlyContinue
+          Get-ChildItem test-output
+
       - name: 上傳安裝程式與測試結果
         if: always()
         uses: actions/upload-artifact@v4
@@ -98,8 +107,7 @@ jobs:
           name: XiaokeVideo-windows
           path: |
             dist-installer/*.exe
-            C:/KKTest/out/*
-            C:/KKTest/install.log
+            test-output/
 
       - name: 發佈到 Releases
         if: startsWith(github.ref, 'refs/tags/v')
@@ -110,4 +118,5 @@ jobs:
           files: |
             dist-installer/*.exe
             selftest-report.json
-            C:/KKTest/out/selftest-editor.png
+            test-output/selftest-editor.png
+            test-output/selftest-export.mp4
