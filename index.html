@@ -90,7 +90,7 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .bin3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .bin3 .mi .th{aspect-ratio:1;background-size:contain;background-color:#2a2f35;background-image:none}
 .bin3 .mi .du{display:none}
-.bintabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.bintabs{display:flex;flex-wrap:wrap;gap:4px;margin:-10px -10px 10px;padding:10px;position:sticky;top:-10px;z-index:5;background:var(--panel);border-bottom:1px solid var(--line)}
 .bintabs button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:11px;color:var(--muted)}
 .bintabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 .mi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:grab;position:relative;display:flex;flex-direction:column}
