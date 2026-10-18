@@ -162,7 +162,7 @@ textarea{resize:vertical;width:100%}
 .trow{position:relative;border-bottom:1px solid var(--line)}
 .trow.k-text{background:#8e6cc40a}.trow.k-video{background:#3a78ad08}.trow.k-audio{background:#3b937208}
 .trow.dropok{background:#f0a83a18}
-.h-text{height:38px}.h-video{height:58px}.h-audio{height:48px}
+.h-text{height:46px}.h-video{height:58px}.h-audio{height:48px}
 .clip{position:absolute;top:3px;bottom:3px;border-radius:5px;overflow:hidden;cursor:grab;color:#fff;font-size:11px;
   border:1px solid #ffffff30;background-repeat:repeat-x;background-size:auto 100%;touch-action:none;user-select:none}
 .clip.k-video,.clip.k-image{background-color:var(--v)}
@@ -680,6 +680,20 @@ defCmd('text.set', '修改文字', '{clipId?|clipIds?|all?, text?, size?(畫面�
   }
   return `更新了 ${list.length} 個字幕`;
 });
+defCmd('text.anim', '字幕動畫', '{clipId?|clipIds?|all?, in?:開始動畫(none無|fade淡入|up由下滑入|down由上滑入|fromLeft由左滑入|fromRight由右滑入|pop彈出放大|zoom由大縮入|bounce彈跳落下|typewriter打字機|wipe由左擦出), out?:結束動畫(none無|fade淡出|up向上滑出|down向下滑出|toLeft向左滑出|toRight向右滑出|shrink縮小消失|zoom放大淡出|blur模糊消失|untype逐字消失|wipe向右擦除), inDur?秒(預設0.6), outDur?秒(預設0.6)}', p => {
+  const list = targets(Object.assign({ type: 'text' }, p)).filter(c => c.type === 'text');
+  if (!list.length) throw new Error('請選一個字幕片段');
+  if (p.in != null && !ANIM_IN[p.in]) throw new Error('沒有這個開始動畫：' + p.in);
+  if (p.out != null && !ANIM_OUT[p.out]) throw new Error('沒有這個結束動畫：' + p.out);
+  for (const c of list) {
+    const a = c.text.anim || (c.text.anim = { in: 'none', out: 'none', inDur: .6, outDur: .6 });
+    if (p.in != null) a.in = p.in;
+    if (p.out != null) a.out = p.out;
+    if (p.inDur != null) a.inDur = clamp(Number(p.inDur), .1, 5);
+    if (p.outDur != null) a.outDur = clamp(Number(p.outDur), .1, 5);
+  }
+  return `設定了 ${list.length} 個字幕的動畫`;
+});
 defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1)}', p => {
   const track = TEXT_TRACKS.includes(p.track) ? p.track : 'T1';
   const items = Array.isArray(p.items) ? p.items : [];
@@ -958,34 +972,97 @@ function wrapText(text, maxW) {
   }
   return lines;
 }
+// ---------- 字幕動畫：開始、結束各 10 種 ----------
+// 每種動畫是一個函式：輸入進度 k（0=動畫開頭，1=完全顯示），回傳要套用的效果
+const easeOut = k => 1 - Math.pow(1 - k, 3);
+const easeBack = k => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(k - 1, 3) + c1 * Math.pow(k - 1, 2); };
+const easeBounce = k => { const n = 7.5625, d = 2.75; if (k < 1 / d) return n * k * k; if (k < 2 / d) return n * (k -= 1.5 / d) * k + .75; if (k < 2.5 / d) return n * (k -= 2.25 / d) * k + .9375; return n * (k -= 2.625 / d) * k + .984375; };
+const ANIM_IN = {
+  none:       { name: '無' },
+  fade:       { name: '淡入', fx: k => ({ alpha: k }) },
+  up:         { name: '由下滑入', fx: k => ({ alpha: k, dy: (1 - easeOut(k)) * .12 }) },
+  down:       { name: '由上滑入', fx: k => ({ alpha: k, dy: -(1 - easeOut(k)) * .12 }) },
+  fromLeft:   { name: '由左滑入', fx: k => ({ alpha: k, dx: -(1 - easeOut(k)) * .3 }) },
+  fromRight:  { name: '由右滑入', fx: k => ({ alpha: k, dx: (1 - easeOut(k)) * .3 }) },
+  pop:        { name: '彈出放大', fx: k => ({ alpha: Math.min(1, k * 2), scale: Math.max(0.01, easeBack(k)) }) },
+  zoom:       { name: '由大縮入', fx: k => ({ alpha: k, scale: 1 + (1 - easeOut(k)) * 1.2 }) },
+  bounce:     { name: '彈跳落下', fx: k => ({ alpha: Math.min(1, k * 3), dy: -(1 - easeBounce(k)) * .35 }) },
+  typewriter: { name: '打字機', fx: k => ({ chars: k }) },
+  wipe:       { name: '由左擦出', fx: k => ({ wipe: easeOut(k) }) },
+};
+const ANIM_OUT = {
+  none:       { name: '無' },
+  fade:       { name: '淡出', fx: k => ({ alpha: k }) },
+  up:         { name: '向上滑出', fx: k => ({ alpha: k, dy: -(1 - k) * (1 - k) * .12 }) },
+  down:       { name: '向下滑出', fx: k => ({ alpha: k, dy: (1 - k) * (1 - k) * .12 }) },
+  toLeft:     { name: '向左滑出', fx: k => ({ alpha: k, dx: -(1 - k) * (1 - k) * .3 }) },
+  toRight:    { name: '向右滑出', fx: k => ({ alpha: k, dx: (1 - k) * (1 - k) * .3 }) },
+  shrink:     { name: '縮小消失', fx: k => ({ alpha: Math.min(1, k * 2), scale: Math.max(0.01, k) }) },
+  zoom:       { name: '放大淡出', fx: k => ({ alpha: k, scale: 1 + (1 - k) * .8 }) },
+  blur:       { name: '模糊消失', fx: k => ({ alpha: k, blur: (1 - k) * 14 }) },
+  untype:     { name: '逐字消失', fx: k => ({ chars: k }) },
+  wipe:       { name: '向右擦除', fx: k => ({ wipe: k, wipeFromRight: true }) },
+};
+function animState(c, t) {
+  const a = c.text.anim || {}, local = toSec(t - c.start), d = toSec(c.dur);
+  const st = { alpha: 1, dx: 0, dy: 0, scale: 1, blur: 0, chars: 1, wipe: 1, wipeFromRight: false };
+  const mix = r => { if (!r) return; if (r.alpha != null) st.alpha *= clamp(r.alpha, 0, 1); st.dx += r.dx || 0; st.dy += r.dy || 0; if (r.scale != null) st.scale *= r.scale; st.blur += r.blur || 0;
+    if (r.chars != null) st.chars = Math.min(st.chars, clamp(r.chars, 0, 1)); if (r.wipe != null) { st.wipe = Math.min(st.wipe, clamp(r.wipe, 0, 1)); if (r.wipeFromRight) st.wipeFromRight = true; } };
+  const inD = Math.min(a.inDur ?? .6, d), outD = Math.min(a.outDur ?? .6, d);
+  const I = ANIM_IN[a.in], O = ANIM_OUT[a.out];
+  if (I && I.fx && inD > 0 && local < inD) mix(I.fx(clamp(local / inD, 0, 1)));
+  if (O && O.fx && outD > 0 && d - local < outD) mix(O.fx(clamp((d - local) / outD, 0, 1)));
+  return st;
+}
 function drawText(c, t) {
   const W = cv.width, H = cv.height, tx = c.text;
   const size = Math.round(H * tx.size / 100) || 20;
   ctx.save();
-  ctx.globalAlpha = fadeAt(c, t);
   ctx.font = `${tx.bold ? 700 : 500} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   textXY(tx);
   const lines = wrapText(tx.content, W * .86), lh = size * 1.35, total = lines.length * lh;
-  const maxW = Math.max(size, ...lines.map(l => ctx.measureText(l).width)) + size * .8;
-  // 文字區塊中心點 = (x%, y%)，並限制在畫面內
+  const widths = lines.map(l => ctx.measureText(l).width);
+  const maxW = Math.max(size, ...widths) + size * .8;
+  // 文字區塊中心點 = (x%, y%)，並限制在畫面內（這是動畫結束後的「停留位置」）
   const cx = clamp(tx.x / 100 * W, maxW / 2, W - maxW / 2);
   const cy = clamp(tx.y / 100 * H, total / 2, H - total / 2);
-  const y0 = cy - total / 2 + lh / 2;
+  textBoxes.push({ id: c.id, x0: cx - maxW / 2, y0: cy - total / 2, x1: cx + maxW / 2, y1: cy + total / 2 });
+  const A = animState(c, t);
+  const alpha = fadeAt(c, t) * A.alpha;
+  if (alpha <= 0.001 || A.chars <= 0 || A.wipe <= 0) { ctx.restore(); return; }
+  ctx.globalAlpha = alpha;
+  // 以文字中心為原點套用位移與縮放
+  ctx.translate(cx + A.dx * W, cy + A.dy * H);
+  if (A.scale !== 1) ctx.scale(A.scale, A.scale);
+  if (A.blur > 0.2) ctx.filter = `blur(${(A.blur * H / 720).toFixed(1)}px)`;
+  if (A.wipe < 1) {        // 擦拭：只露出一部分寬度
+    ctx.beginPath();
+    const w = maxW + size; const x0 = -w / 2;
+    if (A.wipeFromRight) ctx.rect(x0 + w * (1 - A.wipe), -total / 2 - size, w * A.wipe, total + size * 2);
+    else ctx.rect(x0, -total / 2 - size, w * A.wipe, total + size * 2);
+    ctx.clip();
+  }
+  // 打字機：依進度決定顯示幾個字
+  let budget = Infinity;
+  if (A.chars < 1) { const n = lines.reduce((s, l) => s + Array.from(l).length, 0); budget = Math.floor(n * A.chars); }
+  const y0 = -total / 2 + lh / 2;
   lines.forEach((ln, i) => {
-    const y = y0 + i * lh;
-    if (tx.bg && ln) {
-      const w = ctx.measureText(ln).width + size * .8;
+    if (budget <= 0) return;
+    const chars = Array.from(ln), shown = budget >= chars.length ? ln : chars.slice(0, budget).join('');
+    budget -= chars.length;
+    const y = y0 + i * lh, lx = -widths[i] / 2;      // 以完整行寬置中，打字時字才不會左右跳
+    if (!shown) return;
+    if (tx.bg) {
+      const w = ctx.measureText(shown).width + size * .8;
       ctx.fillStyle = 'rgba(0,0,0,.6)';
-      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - w / 2, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(cx - w / 2, y - lh / 2 + 2, w, lh - 4); ctx.fill();
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx - size * .4, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(lx - size * .4, y - lh / 2 + 2, w, lh - 4); ctx.fill();
     } else {
-      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(ln, cx, y);
+      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(shown, lx, y);
     }
-    ctx.fillStyle = tx.color || '#fff'; ctx.fillText(ln, cx, y);
+    ctx.fillStyle = tx.color || '#fff'; ctx.fillText(shown, lx, y);
   });
   ctx.restore();
-  // 記下這段字幕在畫面上的範圍，讓滑鼠可以點選、拖曳
-  textBoxes.push({ id: c.id, x0: cx - maxW / 2, y0: cy - total / 2, x1: cx + maxW / 2, y1: cy + total / 2 });
 }
 function draw(t) {
   const W = cv.width, H = cv.height;
@@ -1078,7 +1155,7 @@ function renderBin() {
     `<div class="mi" data-text="1" title="在播放頭加字幕"><div class="th" style="background:linear-gradient(135deg,#2c2240,#8e6cc4);font-family:var(--f-logo);color:#fff">字</div><span class="kind" style="background:var(--t)">文字</span><button class="add" data-addtext="1">＋</button><div class="nm">字幕／標題</div><div class="du">3.0 秒</div></div>`;
 }
 
-function rowH(kind) { return kind === 'text' ? 38 : kind === 'video' ? 58 : 48; }
+function rowH(kind) { return kind === 'text' ? 46 : kind === 'video' ? 58 : 48; }
 function renderTimeline() {
   const pps = UI.pps, total = Math.max(seqDur() + sec(20), sec(60));
   const width = Math.ceil(toSec(total) * pps);
@@ -1101,7 +1178,8 @@ function renderTimeline() {
       else if (m && m.kind === 'image') bg = `background-image:url(${m.thumb})`;
       else if (m && m.kind === 'audio' && m.wave) bg = `background-image:url(${m.wave});background-size:${toSec(m.dur) * pps / c.speed}px 100%;background-position:${-toSec(c.inPt) * pps / c.speed}px 0`;
       const kind = c.type === 'text' ? 'text' : (m ? m.kind : c.type);
-      const badges = [c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : ''].filter(Boolean).join(' · ');
+      const an = c.type === 'text' ? c.text.anim : null;
+      const badges = [an && (an.in !== 'none' || an.out !== 'none') ? '✦' + [ANIM_IN[an.in]?.name, ANIM_OUT[an.out]?.name].filter(n => n && n !== '無').join('→') : '', c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : ''].filter(Boolean).join(' · ');
       return `<div class="clip k-${kind} ${UI.sel === c.id ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
         ${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
         <div class="hd l"></div><span class="nm">${esc(clipName(c))}</span>${badges ? `<span class="bd">${esc(badges)}</span>` : ''}<div class="hd r"></div></div>`;
@@ -1140,6 +1218,13 @@ function renderInspector() {
         <div class="field"><label>放在軌道</label><div class="seg" data-seg="track">${TEXT_TRACKS.map(tr => `<button data-v="${tr}" aria-pressed="${c.track === tr}">${tr}</button>`).join('')}</div><span></span></div>
         <div class="field"><label for="f_color">顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
         <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 黑色底框</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div></div>`;
+      const an = c.text.anim || { in: 'none', out: 'none', inDur: .6, outDur: .6 };
+      h += `<div class="sec"><h4>字幕動畫 <button class="btn ghost" data-act="animPreview" style="padding:2px 6px">▶ 預覽</button></h4>
+        <div class="field"><label for="f_ain">開始動畫</label><select id="f_ain">${Object.entries(ANIM_IN).map(([k, v]) => `<option value="${k}" ${an.in === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select><span></span></div>
+        ${an.in !== 'none' ? rng('ainDur', '開始秒數', an.inDur, .1, Math.min(5, toSec(c.dur)), .1, 's') : ''}
+        <div class="field"><label for="f_aout">結束動畫</label><select id="f_aout">${Object.entries(ANIM_OUT).map(([k, v]) => `<option value="${k}" ${an.out === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select><span></span></div>
+        ${an.out !== 'none' ? rng('aoutDur', '結束秒數', an.outDur, .1, Math.min(5, toSec(c.dur)), .1, 's') : ''}
+        <div class="row2"><button class="btn" data-act="animAll">把這組動畫套用到全部字幕</button></div></div>`;
     }
     if (c.type === 'video' || c.type === 'audio') h += `<div class="sec"><h4>速度與音量</h4>${rng('speed', '速度', c.speed, .25, 4, .25, '×')}${rng('volume', '音量', Math.round(c.volume * 100), 0, 200, 1, '%')}
       <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>`;
@@ -1175,7 +1260,7 @@ function projectSummary() {
     素材: [...Media.values()].map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
     片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
       clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
-      ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look }),
+      ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y, 動畫: c.text.anim || null } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look }),
     })),
   };
 }
@@ -1488,7 +1573,7 @@ $('heads').addEventListener('click', e => { const b = e.target.closest('[data-mu
 // 屬性面板事件（滑桿連續拖動合併成一個復原步驟）
 const PROP_MAP = { speed: ['clip.set', v => ({ speed: v })], volume: ['clip.set', v => ({ volume: v / 100 })], fadeIn: ['clip.set', v => ({ fadeIn: v })], fadeOut: ['clip.set', v => ({ fadeOut: v })],
   scale: ['clip.set', v => ({ scale: v })], x: ['clip.set', v => ({ x: v })], y: ['clip.set', v => ({ y: v })], rotation: ['clip.set', v => ({ rotation: v })], opacity: ['clip.set', v => ({ opacity: v })],
-  size: ['text.set', v => ({ size: v })], tx: ['text.set', v => ({ x: v })], ty: ['text.set', v => ({ y: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
+  size: ['text.set', v => ({ size: v })], tx: ['text.set', v => ({ x: v })], ainDur: ['text.anim', v => ({ inDur: v })], aoutDur: ['text.anim', v => ({ outDur: v })], ty: ['text.set', v => ({ y: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
   temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })] };
 for (const pane of ['pProps', 'pColor']) {
   $(pane).addEventListener('input', e => {
@@ -1503,6 +1588,8 @@ for (const pane of ['pProps', 'pColor']) {
     const id = UI.sel;
     if (e.target.id === 'f_bg') tryExec('text.set', { clipId: id, background: e.target.checked });
     if (e.target.id === 'f_bold') tryExec('text.set', { clipId: id, bold: e.target.checked });
+    if (e.target.id === 'f_ain') { tryExec('text.anim', { clipId: id, in: e.target.value }); previewAnim(id, 'in'); }
+    if (e.target.id === 'f_aout') { tryExec('text.anim', { clipId: id, out: e.target.value }); previewAnim(id, 'out'); }
     if (e.target.dataset.k === 'speed') renderInspector();
   });
   $(pane).addEventListener('click', e => {
@@ -1516,10 +1603,23 @@ for (const pane of ['pProps', 'pColor']) {
     if (act === 'resetTf') tryExec('clip.set', { clipId: id, scale: 100, x: 0, y: 0, rotation: 0, opacity: 100 });
     if (act === 'resetFx') tryExec('color.set', { clipId: id, reset: true });
     if (act === 'fxAll') { const c = getClip(id); if (c) { const f = c.fx; tryExec('color.set', { all: true, type: 'video', reset: true, look: f.look, exposure: f.exposure, contrast: f.contrast, saturation: f.saturation, temperature: f.temp, vignette: f.vignette }); toast('已套用到全部畫面片段'); } }
+    if (act === 'animPreview') previewAnim(id);
+    if (act === 'animAll') { const c = getClip(id); const a = c?.text?.anim; if (a) { tryExec('text.anim', { all: true, in: a.in, out: a.out, inDur: a.inDur, outDur: a.outDur }); toast('已套用到全部字幕'); } }
     if (act === 'split') tryExec('timeline.split', { clipId: id });
     if (act === 'dup') tryExec('timeline.duplicate', { clipId: id });
     if (act === 'del') tryExec('timeline.delete', { clipId: id });
   });
+}
+// 預覽字幕動畫：開始動畫從片段開頭播；結束動畫從結尾前一點開始播
+let previewStop = null;
+function previewAnim(id, which) {
+  const c = getClip(id); if (!c) return;
+  const a = c.text.anim || {};
+  const from = which === 'out' ? Math.max(c.start, clipEnd(c) - sec((a.outDur || .6) + .8)) : c.start;
+  seek(from); play();
+  clearTimeout(previewStop);
+  const until = which === 'in' ? Math.min(clipEnd(c), c.start + sec((a.inDur || .6) + 1)) : clipEnd(c);
+  previewStop = setTimeout(() => { if (UI.playing && !UI.exporting) { pause(); seek(which === 'in' ? Math.min(until, clipEnd(c) - TPF) : clipEnd(c) - TPF); } }, toSec(until - from) * 1000 + 50);
 }
 function switchTab(tab) {
   UI.tab = tab;
@@ -1631,6 +1731,9 @@ function demo() {
   const t1 = makeClip('text', 'T1', sec(3.5), sec(3), { text: textDefaults('小柯影音剪輯助手', 'title'), fadeIn: .5, fadeOut: .5 });
   const t2 = makeClip('text', 'T1', sec(6.5), sec(3.5), { text: textDefaults('把影片拖進左邊素材箱，就能開始剪輯') });
   const t3 = makeClip('text', 'T2', sec(6.5), sec(3.5), { text: Object.assign(textDefaults('可以按住字幕拖到任何位置'), { y: POS_Y.top, bg: false, size: 4.2, color: '#f0a83a' }) });
+  t1.text.anim = { in: 'pop', out: 'fade', inDur: .7, outDur: .5 };
+  t2.text.anim = { in: 'typewriter', out: 'none', inDur: 1.2, outDur: .6 };
+  t3.text.anim = { in: 'fromRight', out: 'toLeft', inDur: .6, outDur: .5 };
   doc.clips.push(cd, gr, t1, t2, t3);
   doc.name = '範例專案（可直接刪掉重來）';
   UI.playhead = sec(4.2);
