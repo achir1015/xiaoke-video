@@ -87,6 +87,12 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .drop.over{border-color:var(--accent);color:var(--fg);background:#f0a83a14}
 .bin-sec{font-size:11px;color:var(--muted);letter-spacing:.08em;margin:12px 0 6px}
 .bin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bin3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.bin3 .mi .th{aspect-ratio:1;background-size:contain;background-color:#2a2f35;background-image:none}
+.bin3 .mi .du{display:none}
+.bintabs{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:10px}
+.bintabs button{background:transparent;border:1px solid var(--line);border-radius:999px;padding:3px 9px;font-size:11px;color:var(--muted)}
+.bintabs button[aria-selected=true]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink);font-weight:700}
 .mi{background:var(--panel2);border:1px solid var(--line);border-radius:6px;overflow:hidden;cursor:grab;position:relative;display:flex;flex-direction:column}
 .mi:hover{border-color:#46505a}
 .mi .th{aspect-ratio:16/9;background:#0b0d0f center/cover no-repeat;display:grid;place-items:center;color:var(--muted);font-size:20px;max-width:100%}
@@ -258,12 +264,18 @@ textarea{resize:vertical;width:100%}
     <section class="panel bin-p" aria-label="素材箱">
       <div class="ph">素材箱 <span class="muted" id="binCount"></span></div>
       <div class="pb">
-        <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
-        <input type="file" id="fileIn" multiple accept="video/*,audio/*,image/*" hidden>
-        <div class="bin-sec">我的素材</div>
-        <div class="bin" id="bin"></div>
-        <div class="bin-sec">內建素材</div>
-        <div class="bin" id="binGen"></div>
+        <div class="bintabs" role="tablist" id="binTabs">
+          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button>
+        </div>
+        <div id="bt-mine">
+          <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
+          <input type="file" id="fileIn" multiple accept="video/*,audio/*,image/*" hidden>
+          <div class="bin" id="bin" style="margin-top:10px"></div>
+        </div>
+        <div id="bt-intro" hidden><p class="note">按「＋」放到影片最前面（其他片段自動往後移）。標題文字和主色可以在右邊修改。</p><div class="bin" id="binIntro"></div></div>
+        <div id="bt-outro" hidden><p class="note">按「＋」接在 V1 主畫面最後。</p><div class="bin" id="binOutro"></div></div>
+        <div id="bt-sticker" hidden><p class="note">按「＋」貼到 V2 疊加軌的播放頭位置，再到監看畫面上拖曳擺位、用「縮放」調大小。</p><div class="bin bin3" id="binSticker"></div></div>
+        <div id="bt-basic" hidden><div class="bin" id="binGen"></div></div>
         <div class="bin-sec">字幕檔</div>
         <div class="row2">
           <button class="btn" id="bSrtIn">匯入 SRT</button>
@@ -624,9 +636,19 @@ defCmd('timeline.trim', '修剪片段', '{clipId, start?秒, end?秒}：改變�
   overwrite(c.track, c.start, clipEnd(c), c.id);
   return `片段 #${c.id} 現在是 ${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
 });
-defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, mode?:"append"|"overwrite"|"insert"}：append 接在該軌最後（預設）', p => {
+defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, mode?:"append"|"overwrite"|"insert"|"intro"|"outro"}：append 接在該軌最後；intro 放在影片最前面（其他所有片段往後移）；outro 接在 V1 最後；圖檔（貼圖）預設放在 V2 播放頭位置', p => {
   const m = Media.get(String(p.mediaId));
   if (!m) throw new Error('找不到素材 ' + p.mediaId);
+  if (!p.mode && p.start == null && m.cat === 'intro') p.mode = 'intro';
+  if (!p.mode && p.start == null && m.cat === 'outro') p.mode = 'outro';
+  if (p.mode === 'intro' || p.mode === 'outro') {
+    const c = makeClip('gen', 'V1', 0, m.dur, { mediaId: m.id, gen: { kind: m.gen } });
+    if (p.mode === 'intro') { for (const x of doc.clips) x.start += c.dur; c.start = 0; }
+    else c.start = clipsOn('V1').reduce((a, x) => Math.max(a, clipEnd(x)), 0);
+    doc.clips.push(c); UI.sel = c.id;
+    return `${p.mode === 'intro' ? '片頭放在影片最前面' : '片尾接在 V1 最後'}：片段 #${c.id}，${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
+  }
+  if (m.cat === 'sticker' && !p.track && !p.mode && p.start == null) { p.track = 'V2'; p.mode = 'overwrite'; }
   const track = p.track || (m.kind === 'audio' ? 'A1' : 'V1');
   const k = trackKind(track);
   if (!k || (m.kind === 'audio') !== (k === 'audio') || k === 'text') throw new Error(`${m.name} 不能放到 ${track}`);
@@ -635,6 +657,7 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
   const type = m.kind;
   const c = makeClip(type, track, start, m.dur, { mediaId: m.id });
   if (m.kind === 'gen') c.gen = { kind: m.gen, color: m.color };
+  if (m.cat === 'sticker') c.tf.scale = m.defScale || 35;
   if (mode === 'insert') {
     for (const x of doc.clips) if (x.track === track && x.start < c.start && clipEnd(x) > c.start) splitClip(x, c.start);
     for (const x of doc.clips) if (x.track === track && x.start >= c.start) x.start += c.dur;
@@ -727,6 +750,14 @@ defCmd('clip.transition', '轉場', '{clipId?(後一段片段)|all?:true(所有�
     if (p.duration != null) tr.dur = clamp(Number(p.duration), .2, 3);
   }
   return `設定了 ${list.length} 個轉場`;
+});
+defCmd('gen.set', '修改片頭／片尾文字', '{clipId?, title?, sub?(副標題；片尾名單每行一個), accent?(#hex 主色)}', p => {
+  const c = target(p);
+  if (c.type !== 'gen' || !TPL[c.gen?.kind]) throw new Error('請選一個片頭或片尾片段');
+  if (p.title != null) c.gen.title = String(p.title);
+  if (p.sub != null) c.gen.sub = String(p.sub);
+  if (p.accent != null && /^#[0-9a-f]{6}$/i.test(p.accent)) c.gen.accent = p.accent;
+  return '已更新片頭／片尾文字';
 });
 defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1)}', p => {
   const track = TEXT_TRACKS.includes(p.track) ? p.track : 'T1';
@@ -832,7 +863,272 @@ function relinkOffline(m) {
   for (const c of doc.clips) if (c.offlineName && c.offlineName === m.name) { c.mediaId = m.id; delete c.offlineName; }
 }
 // 內建產生器素材
-GENS.forEach((g, i) => Media.set('g' + i, { id: 'g' + i, name: g.name, kind: 'gen', gen: g.gen, color: g.color, dur: sec(g.dur), icon: g.icon, builtin: true }));
+GENS.forEach((g, i) => Media.set('g' + i, { id: 'g' + i, name: g.name, kind: 'gen', gen: g.gen, color: g.color, dur: sec(g.dur), icon: g.icon, builtin: true, cat: 'basic' }));
+
+/* =====================================================================
+ * 內建素材庫：片頭 20、片尾 20、圖檔 30
+ * 全部用程式即時繪製（不用外部圖片），任何解析度都清晰，匯出也不會糊。
+ * 片頭／片尾是「場景 = 背景 + 裝飾 + 文字動畫」的組合，標題、副標題、主色都能改。
+ * ===================================================================== */
+const FF = '"Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif';
+const rnd = i => { const x = Math.sin(i * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); };   // 固定的亂數，匯出結果每次都一樣
+const ease = k => 1 - Math.pow(1 - clamp(k, 0, 1), 3);
+const lerp = (a, b, k) => a + (b - a) * k;
+function hexA(hex, a) { const n = parseInt(String(hex || '#ffffff').slice(1), 16); return `rgba(${n >> 16 & 255},${n >> 8 & 255},${n & 255},${a})`; }
+function fitFont(g, text, maxW, size, weight = 800) {
+  let s = size; g.font = `${weight} ${s}px ${FF}`;
+  while (s > 8 && g.measureText(text).width > maxW) { s *= .92; g.font = `${weight} ${s}px ${FF}`; }
+  return s;
+}
+// 逐字繪製（字距動畫、彈跳、打字機用）
+function drawChars(g, text, cx, cy, spacing, each) {
+  const ch = Array.from(text), ws = ch.map(c => g.measureText(c).width);
+  const total = ws.reduce((a, b) => a + b, 0) + spacing * Math.max(0, ch.length - 1);
+  let x = cx - total / 2;
+  ch.forEach((c, i) => { each(c, x + ws[i] / 2, cy, i, ch.length); x += ws[i] + spacing; });
+}
+
+// ---------- 背景 ----------
+const BG = {
+  dark(S) { const { g, W, H, acc } = S; g.fillStyle = '#0c0e11'; g.fillRect(0, 0, W, H); const r = g.createRadialGradient(W / 2, H * .55, 0, W / 2, H * .55, H); r.addColorStop(0, hexA(acc, .16)); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, H); },
+  neon(S) { const { g, W, H, acc, t } = S; g.fillStyle = '#0a0614'; g.fillRect(0, 0, W, H); g.strokeStyle = hexA(acc, .08); g.lineWidth = 1; const s = H / 12;
+    for (let x = (t * 10) % s; x < W; x += s) { g.beginPath(); g.moveTo(x, 0); g.lineTo(x, H); g.stroke(); } for (let y = 0; y < H; y += s) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); } },
+  film(S) { const { g, W, H, t } = S; const f = Math.floor(t * 24), fl = .9 + rnd(f) * .1; g.fillStyle = `rgb(${46 * fl | 0},${36 * fl | 0},${26 * fl | 0})`; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,240,210,.06)'; for (let i = 0; i < 260; i++) g.fillRect(rnd(f * 999 + i) * W, rnd(f * 777 + i) * H, 2, 2);
+    g.strokeStyle = 'rgba(255,240,210,.18)'; g.lineWidth = 1; for (let i = 0; i < 2; i++) { const x = rnd(f * 31 + i) * W; g.beginPath(); g.moveTo(x, 0); g.lineTo(x + 6, H); g.stroke(); } },
+  grad(S) { const { g, W, H, t, acc } = S; const gr = g.createLinearGradient(0, 0, W, H); const h = (t * 30) % 360;
+    gr.addColorStop(0, acc); gr.addColorStop(.5, `hsl(${h + 200},70%,45%)`); gr.addColorStop(1, `hsl(${h + 280},65%,30%)`); g.fillStyle = gr; g.fillRect(0, 0, W, H); },
+  stars(S) { const { g, W, H, t } = S; g.fillStyle = '#04050a'; g.fillRect(0, 0, W, H); g.fillStyle = '#fff';
+    for (let i = 0; i < 260; i++) { const a = rnd(i) * Math.PI * 2, z = ((rnd(i + 99) + t * .25) % 1), r = Math.pow(z, 2) * Math.hypot(W, H) * .6;
+      const x = W / 2 + Math.cos(a) * r, y = H / 2 + Math.sin(a) * r, s = .5 + z * 2.6 * H / 720; g.globalAlpha = z; g.fillRect(x, y, s, s); } g.globalAlpha = 1; },
+  tech(S) { const { g, W, H, t, acc } = S; g.fillStyle = '#040d18'; g.fillRect(0, 0, W, H); g.strokeStyle = hexA(acc, .28); g.lineWidth = 1; const hz = H * .62;
+    for (let i = -12; i <= 12; i++) { g.beginPath(); g.moveTo(W / 2 + i * W * .02, hz); g.lineTo(W / 2 + i * W * .18, H); g.stroke(); }
+    for (let i = 0; i < 12; i++) { const k = ((i + t * 1.5) % 12) / 12, y = hz + Math.pow(k, 2.2) * (H - hz); g.globalAlpha = k; g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); } g.globalAlpha = 1; },
+  pastel(S) { const { g, W, H, t } = S; const gr = g.createLinearGradient(0, 0, W, H); gr.addColorStop(0, '#fde8ee'); gr.addColorStop(1, '#e3f1fb'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (let i = 0; i < 9; i++) { g.fillStyle = `hsla(${rnd(i) * 360},80%,80%,.35)`; g.beginPath(); g.arc(rnd(i + 3) * W, (rnd(i + 7) * H - t * H * .03 * (1 + rnd(i))) % H + H * .1, H * (.05 + rnd(i + 5) * .12), 0, Math.PI * 2); g.fill(); } },
+  paper(S) { const { g, W, H } = S; g.fillStyle = '#f5efe3'; g.fillRect(0, 0, W, H); g.strokeStyle = 'rgba(120,100,70,.07)'; g.lineWidth = 1; for (let y = H * .04; y < H; y += H / 28) { g.beginPath(); g.moveTo(0, y); g.lineTo(W, y); g.stroke(); } },
+  sunset(S) { const { g, W, H, t } = S; const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#2d1b4e'); gr.addColorStop(.55, '#e2635a'); gr.addColorStop(1, '#f7b267'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.fillStyle = 'rgba(255,230,170,.85)'; g.beginPath(); g.arc(W / 2, H * (.78 - Math.min(t, 3) * .02), H * .2, 0, Math.PI * 2); g.fill();
+    g.fillStyle = 'rgba(45,27,78,.55)'; for (let i = 0; i < 5; i++) g.fillRect(0, H * (.8 + i * .045), W, H * .012 * (5 - i) / 3); },
+  ocean(S) { const { g, W, H, t } = S; const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#0b3d63'); gr.addColorStop(1, '#16a5b8'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    for (let j = 0; j < 4; j++) { g.fillStyle = `rgba(255,255,255,${.06 + j * .03})`; g.beginPath(); g.moveTo(0, H); for (let x = 0; x <= W; x += W / 60) g.lineTo(x, H * (.7 + j * .07) + Math.sin(x / W * 8 + t * (1.2 + j * .4) + j) * H * .02); g.lineTo(W, H); g.fill(); } },
+  gold(S) { const { g, W, H } = S; g.fillStyle = '#0b0906'; g.fillRect(0, 0, W, H); const r = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, H * .9); r.addColorStop(0, 'rgba(120,90,30,.35)'); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, H); },
+};
+const LIGHT_BG = { pastel: 1, paper: 1 };
+
+// ---------- 裝飾（pre 畫在文字下面，post 畫在文字上面） ----------
+const DECOR = {
+  glow: { pre(S) { const { g, W, H, t, acc } = S; const p = .5 + .5 * Math.sin(t * 2); const r = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, H * (.35 + p * .08)); r.addColorStop(0, hexA(acc, .3)); r.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = r; g.fillRect(0, 0, W, H); } },
+  bars: { post(S) { const { g, W, H, t, out, D } = S;   // 上下黑邊：片頭由中間打開，片尾在最後闔上
+    const hh = out ? lerp(H * .12, H * .5, ease((t - (D - 1.4)) / 1.2)) : lerp(H * .5, H * .12, ease(t / 1.2));
+    g.fillStyle = '#000'; g.fillRect(0, 0, W, hh); g.fillRect(0, H - hh, W, hh); } },
+  sweep: { post(S) { const { g, W, H, t } = S; const x = ((t - .8) % 2.4) / 1.6 * (W * 1.6) - W * .3; if (t < .8) return; g.save(); g.globalCompositeOperation = 'lighter';
+    const gr = g.createLinearGradient(x - W * .12, 0, x + W * .12, 0); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,240,200,.45)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.translate(x, H / 2); g.rotate(-.35); g.fillRect(-W * .12, -H, W * .24, H * 2); g.restore(); } },
+  rays: { pre(S) { const { g, W, H, t, acc } = S; g.save(); g.translate(W / 2, H / 2); g.rotate(t * .25); g.fillStyle = hexA(acc, .12);
+    for (let i = 0; i < 16; i++) { g.rotate(Math.PI / 8); g.beginPath(); g.moveTo(0, 0); g.lineTo(W, -W * .08); g.lineTo(W, W * .08); g.fill(); } g.restore(); } },
+  particles: { pre(S) { const { g, W, H, t, acc } = S; const k = ease(t / 1.6); g.fillStyle = acc;
+    for (let i = 0; i < 140; i++) { const a = rnd(i) * Math.PI * 2, R0 = Math.hypot(W, H) * (.5 + rnd(i + 5) * .3), R1 = H * (.22 + rnd(i + 9) * .1) + Math.sin(t * 2 + i) * H * .01;
+      const r = lerp(R0, R1, k), x = W / 2 + Math.cos(a + t * .2) * r * 1.6, y = H / 2 + Math.sin(a + t * .2) * r * .7; g.globalAlpha = .3 + rnd(i + 2) * .7; const s = (1 + rnd(i + 4) * 3) * H / 720; g.fillRect(x, y, s, s); } g.globalAlpha = 1; } },
+  ripples: { pre(S) { const { g, W, H, t, acc } = S; g.lineWidth = H / 300; for (let i = 0; i < 6; i++) { const k = ((t * .5 + i / 6) % 1); g.strokeStyle = hexA(acc, (1 - k) * .5); g.beginPath(); g.arc(W / 2, H / 2, k * H * .9, 0, Math.PI * 2); g.stroke(); } } },
+  stripes: { pre(S) { const { g, W, H, t, acc } = S; g.save(); g.translate(W / 2, H / 2); g.rotate(-.5); for (let i = 0; i < 7; i++) { const k = ease((t - i * .08) / .9);
+    g.fillStyle = i % 2 ? hexA(acc, .9) : hexA(acc, .45); const y = (i - 3) * H * .16; g.fillRect(lerp(-W * 2, -W, k), y, W * 2 * (1 - ease((t - 1.4 - i * .05) / .8)) + 1, H * .08); } g.restore(); } },
+  split: { pre(S) { const { g, W, H, t, acc } = S; const k = ease((t - .2) / 1); g.fillStyle = acc; g.fillRect(0, -H / 2 * k, W, H / 2); g.fillStyle = '#1a1d22'; g.fillRect(0, H / 2 + H / 2 * k, W, H / 2); } },
+  underline: { post(S) { const { g, W, H, t, acc } = S; const k = ease((t - .8) / .8); if (k <= 0) return; g.strokeStyle = acc; g.lineCap = 'round'; g.lineWidth = H / 70; const w = S.tw * 1.05;
+    g.beginPath(); for (let i = 0; i <= 40 * k; i++) { const x = W / 2 - w / 2 + w * i / 40, y = S.ty + S.ts * .62 + Math.sin(i * .7) * H / 300; i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); } },
+  tiles: { post(S) { const { g, W, H, t, acc } = S; const n = 8, cw = W / n, rows = Math.ceil(H / cw);
+    for (let i = 0; i < n; i++) for (let j = 0; j < rows; j++) { const k = ease((t - .15 - (i + j) * .05) / .5); if (k >= 1) continue; const s = 1 - k;
+      g.fillStyle = (i + j) % 2 ? acc : hexA(acc, .7); g.fillRect(i * cw + cw / 2 * (1 - s), j * cw + cw / 2 * (1 - s), cw * s + .5, cw * s + .5); } } },
+  ink: { pre(S) { const { g, W, H, t, acc } = S; for (let i = 0; i < 26; i++) { const k = ease((t - rnd(i) * .8) / 1.4); if (k <= 0) continue;
+    g.fillStyle = hexA(acc, .1 + rnd(i + 3) * .12); g.beginPath(); g.arc(W * (.2 + rnd(i + 1) * .6), H * (.25 + rnd(i + 2) * .5), k * H * (.08 + rnd(i + 4) * .2), 0, Math.PI * 2); g.fill(); } } },
+  lines: { pre(S) { const { g, W, H, t, acc } = S; const k = ease((t - .1) / 1.1); g.strokeStyle = acc; g.lineWidth = H / 360;
+    for (const dy of [-1, 1]) { const y = H / 2 + dy * H * .14; g.beginPath(); g.moveTo(W / 2 - k * W * .35, y); g.lineTo(W / 2 + k * W * .35, y); g.stroke(); } } },
+  confetti: { post(S) { const { g, W, H, t } = S; for (let i = 0; i < 110; i++) { const x = rnd(i) * W + Math.sin(t * 2 + i) * W * .02, y = ((rnd(i + 50) * 1.2 - .2) * H + t * H * (.18 + rnd(i + 9) * .2)) % (H * 1.1) - H * .05;
+    g.save(); g.translate(x, y); g.rotate(t * (2 + rnd(i) * 4) + i); g.fillStyle = `hsl(${rnd(i + 3) * 360},85%,60%)`; g.fillRect(-H / 140, -H / 70, H / 70, H / 35); g.restore(); } } },
+  hearts: { post(S) { const { g, W, H, t, acc } = S; for (let i = 0; i < 22; i++) { const k = ((t * .22 + rnd(i)) % 1), x = rnd(i + 7) * W + Math.sin(t * 2 + i) * W * .02, y = H * 1.05 - k * H * 1.2, s = H * (.02 + rnd(i + 4) * .035);
+    g.globalAlpha = Math.sin(k * Math.PI) * .9; g.fillStyle = i % 3 ? acc : '#ff9fb8'; heartPath(g, x, y, s); g.fill(); } g.globalAlpha = 1; } },
+  scan: { post(S) { const { g, W, H, t } = S; g.fillStyle = 'rgba(0,0,0,.18)'; for (let y = 0; y < H; y += 4 * H / 720) g.fillRect(0, y, W, H / 720 * 1.4);
+    const y = (t * .35 % 1) * H; const gr = g.createLinearGradient(0, y - H * .05, 0, y + H * .05); gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(.5, 'rgba(255,255,255,.06)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, y - H * .05, W, H * .1); } },
+  frame: { post(S) { const { g, W, H, acc } = S; g.strokeStyle = hexA(acc, .6); g.lineWidth = H / 240; const m = H * .06; g.strokeRect(m, m, W - m * 2, H - m * 2);
+    g.fillStyle = 'rgba(0,0,0,.55)'; const r = H / 70; for (let x = r * 2; x < W; x += r * 4) { g.fillRect(x, H * .012, r * 1.6, r * 1.2); g.fillRect(x, H - H * .012 - r * 1.2, r * 1.6, r * 1.2); } } },
+  iris: { post(S) { const { g, W, H, t, D } = S; const k = ease((t - (D - 1.6)) / 1.2); if (k <= 0) return; const R = Math.hypot(W, H) / 2 * (1 - k);
+    g.save(); g.fillStyle = '#000'; g.beginPath(); g.rect(0, 0, W, H); g.arc(W / 2, H / 2, Math.max(0, R), 0, Math.PI * 2, true); g.fill('evenodd'); g.restore(); } },
+  arrow: { post(S) { const { g, W, H, t, acc } = S; const k = ease((t - .9) / .7); if (k <= 0) return; const x = W / 2 + S.tw / 2 + H * .06 + Math.sin(t * 5) * H * .015, y = S.ty;
+    g.globalAlpha = k; g.fillStyle = acc; g.beginPath(); g.moveTo(x, y - H * .05); g.lineTo(x + H * .09, y); g.lineTo(x, y + H * .05); g.closePath(); g.fill(); g.globalAlpha = 1; } },
+  subscribe: { post(S) { const { g, W, H, t } = S; const k = ease((t - .8) / .6); if (k <= 0) return; const done = t > 2.4, bw = H * .42, bh = H * .12, x = W / 2 - bw / 2 - H * .06, y = H * .68;
+    g.globalAlpha = k; g.fillStyle = done ? '#5b5f66' : '#e0352b'; roundRect(g, x, y, bw, bh, bh / 2); g.fill(); g.fillStyle = '#fff'; g.font = `700 ${bh * .48}px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(done ? '已訂閱' : '訂閱', x + bw / 2, y + bh / 2);
+    const bx = x + bw + H * .1, by = y + bh / 2; g.fillStyle = '#fff'; g.save(); g.translate(bx, by); g.rotate(done ? Math.sin(t * 18) * .25 * Math.max(0, 1 - (t - 2.4)) : 0); bellPath(g, 0, 0, bh * .42); g.fill(); g.restore();
+    const cx = lerp(W * .8, x + bw * .6, ease((t - 1.3) / .9)), cy = lerp(H * .95, y + bh * .7, ease((t - 1.3) / .9)); if (t > 1.3 && t < 3.2) { g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = H / 400; cursorPath(g, cx, cy, H * .05); g.fill(); g.stroke(); }
+    g.globalAlpha = 1; } },
+  socials: { post(S) { const { g, W, H, t, acc } = S; for (let i = 0; i < 3; i++) { const k = ease((t - .9 - i * .15) / .5); if (k <= 0) continue; const x = W / 2 + (i - 1) * H * .2, y = H * .72 + (1 - k) * H * .05, r = H * .055;
+    g.globalAlpha = k; g.fillStyle = acc; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.fillStyle = '#0c0e11'; g.strokeStyle = '#0c0e11'; g.lineWidth = r * .14;
+    if (i === 0) { g.beginPath(); g.moveTo(x - r * .3, y - r * .4); g.lineTo(x + r * .45, y); g.lineTo(x - r * .3, y + r * .4); g.fill(); }
+    else if (i === 1) { roundRect(g, x - r * .5, y - r * .5, r, r, r * .28); g.stroke(); g.beginPath(); g.arc(x, y, r * .22, 0, Math.PI * 2); g.stroke(); }
+    else { g.beginPath(); g.arc(x, y, r * .5, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.ellipse(x, y, r * .22, r * .5, 0, 0, Math.PI * 2); g.stroke(); g.beginPath(); g.moveTo(x - r * .5, y); g.lineTo(x + r * .5, y); g.stroke(); } } g.globalAlpha = 1; } },
+};
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function heartPath(g, x, y, s) { g.beginPath(); g.moveTo(x, y + s * .9); g.bezierCurveTo(x - s * 1.6, y - s * .1, x - s * .7, y - s * 1.3, x, y - s * .45); g.bezierCurveTo(x + s * .7, y - s * 1.3, x + s * 1.6, y - s * .1, x, y + s * .9); g.closePath(); }
+function bellPath(g, x, y, s) { g.beginPath(); g.moveTo(x - s, y + s * .6); g.quadraticCurveTo(x - s * .8, y + s * .3, x - s * .75, y - s * .2); g.quadraticCurveTo(x - s * .7, y - s, x, y - s); g.quadraticCurveTo(x + s * .7, y - s, x + s * .75, y - s * .2); g.quadraticCurveTo(x + s * .8, y + s * .3, x + s, y + s * .6); g.closePath(); g.moveTo(x + s * .25, y + s * .75); g.arc(x, y + s * .75, s * .25, 0, Math.PI); }
+function cursorPath(g, x, y, s) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + s); g.lineTo(x + s * .28, y + s * .75); g.lineTo(x + s * .5, y + s * 1.15); g.lineTo(x + s * .62, y + s * 1.08); g.lineTo(x + s * .42, y + s * .7); g.lineTo(x + s * .75, y + s * .7); g.closePath(); }
+function starPath(g, x, y, R, r, n = 5) { g.beginPath(); for (let i = 0; i < n * 2; i++) { const a = -Math.PI / 2 + i * Math.PI / n, rr = i % 2 ? r : R; g.lineTo(x + Math.cos(a) * rr, y + Math.sin(a) * rr); } g.closePath(); }
+
+// ---------- 文字動畫 ----------
+function drawTitles(S, anim) {
+  const { g, W, H, t, title, sub, fg, acc } = S;
+  const a = clamp((t - .35) / .9, 0, 1), e = ease(a);
+  g.textAlign = 'center'; g.textBaseline = 'middle';
+  const ty = sub ? H * .46 : H * .5, ts = fitFont(g, title, W * .82, H * .13);
+  S.ty = ty; S.ts = ts; S.tw = g.measureText(title).width;
+  const subDraw = (alpha = ease((t - 1) / .8), dy = 0) => {
+    if (!sub || anim === 'roll') return; g.save(); g.globalAlpha *= alpha; g.fillStyle = S.subFg; fitFont(g, sub.split('\n')[0], W * .8, H * .045, 500);
+    g.fillText(sub.split('\n')[0], W / 2, H * .6 + dy + (1 - alpha) * H * .02); g.restore();
+  };
+  g.fillStyle = fg;
+  switch (anim) {
+    case 'fade': g.globalAlpha = e; g.fillText(title, W / 2, ty + (1 - e) * H * .03); g.globalAlpha = 1; subDraw(); break;
+    case 'track': g.globalAlpha = e; drawChars(g, title, W / 2, ty, (1 - e) * H * .06 + H * .004, (c, x, y) => g.fillText(c, x, y)); g.globalAlpha = 1; subDraw(); break;
+    case 'type': { const n = Math.floor(Array.from(title).length * clamp((t - .3) / 1.4, 0, 1)), shown = Array.from(title).slice(0, n).join('');
+      const full = g.measureText(title).width, w = g.measureText(shown).width; g.textAlign = 'left'; g.fillText(shown, W / 2 - full / 2, ty);
+      if (Math.floor(t * 2.5) % 2 === 0 || n < Array.from(title).length) { g.fillStyle = acc; g.fillRect(W / 2 - full / 2 + w + H * .01, ty - ts * .45, H * .012, ts * .9); }
+      g.textAlign = 'center'; g.fillStyle = fg; subDraw(ease((t - 2) / .8)); break; }
+    case 'bounce': drawChars(g, title, W / 2, ty, H * .006, (c, x, y, i) => { const k = clamp((t - .3 - i * .07) / .7, 0, 1); if (k <= 0) return;
+      const b = k < 1 ? 1 - Math.abs(Math.cos(k * Math.PI * 2.5)) * (1 - k) : 1; g.save(); g.translate(x, y - (1 - b) * H * .15); g.scale(.6 + .4 * ease(k * 1.5), .6 + .4 * ease(k * 1.5)); g.fillText(c, 0, 0); g.restore(); });
+      subDraw(ease((t - 1.3) / .8)); break;
+    case 'zoom': { const s = lerp(1.8, 1, e); g.save(); g.globalAlpha = e; g.translate(W / 2, ty); g.scale(s, s); g.fillText(title, 0, 0); g.restore(); subDraw(); break; }
+    case 'rise': { g.save(); g.beginPath(); g.rect(0, ty - ts * .75, W, ts * 1.5); g.clip(); g.fillText(title, W / 2, ty + (1 - e) * ts * 1.3); g.restore(); subDraw(); break; }
+    case 'neon': { const f = Math.floor(t * 20), on = t > 1.2 || rnd(f) > (1 - t / 1.2) * .7; g.save(); g.shadowColor = acc; g.shadowBlur = on ? H * .04 : 0; g.fillStyle = on ? '#fff' : hexA(acc, .25);
+      g.globalAlpha = clamp(t / .3, 0, 1); g.fillText(title, W / 2, ty); if (on) { g.shadowBlur = H * .08; g.globalAlpha *= .6; g.fillText(title, W / 2, ty); } g.restore(); subDraw(); break; }
+    case 'glitch': { const f = Math.floor(t * 24), amt = Math.max(0, 1 - t / 1.8) * .8 + (rnd(f) > .93 ? .4 : 0), j = (rnd(f + 1) - .5) * H * .03 * amt;
+      g.globalAlpha = clamp(t / .4, 0, 1); g.save(); g.globalCompositeOperation = 'lighter'; g.fillStyle = 'rgba(255,0,80,.8)'; g.fillText(title, W / 2 - H * .012 * amt + j, ty); g.fillStyle = 'rgba(0,240,255,.8)'; g.fillText(title, W / 2 + H * .012 * amt - j, ty); g.restore();
+      g.fillStyle = fg; g.fillText(title, W / 2 + j * .3, ty);
+      if (amt > .2) { for (let i = 0; i < 4; i++) { const y = rnd(f * 7 + i) * H, h = H * .02 * rnd(f + i); g.drawImage(g.canvas, 0, y, W, h, (rnd(f * 3 + i) - .5) * H * .08, y, W, h); } }
+      g.globalAlpha = 1; subDraw(); break; }
+    case 'roll': { const lines = [title, '', ...String(sub || '').split(/\n|、/)].filter((l, i) => i < 30); const lh = H * .075, total = lines.length * lh, sp = (H + total) / Math.max(1, S.D - .8);
+      const y0 = H - t * sp; lines.forEach((l, i) => { if (!l) return; g.font = `${i ? 500 : 800} ${i ? H * .045 : H * .085}px ${FF}`; g.fillStyle = i ? S.subFg : fg; g.fillText(l, W / 2, y0 + i * lh + (i ? lh * .6 : 0)); }); break; }
+  }
+}
+
+// ---------- 範本清單 ----------
+const T_IN = [
+  ['經典淡入', 'dark', ['glow'], 'fade', '#f0a83a'],
+  ['霓虹燈牌', 'neon', [], 'neon', '#ff4fd8'],
+  ['打字機', 'dark', ['scan'], 'type', '#7cffb2'],
+  ['電影寬銀幕', 'dark', ['bars', 'sweep'], 'track', '#e8d5a3'],
+  ['金色光芒', 'gold', ['rays', 'sweep'], 'zoom', '#f3c75f'],
+  ['粒子聚合', 'dark', ['particles'], 'fade', '#5ec8ff'],
+  ['斜紋滑入', 'dark', ['stripes'], 'rise', '#ff6b4a'],
+  ['漣漪擴散', 'ocean', ['ripples'], 'fade', '#ffffff'],
+  ['雙色分割', 'dark', ['split'], 'track', '#3a78ad'],
+  ['故障風格', 'tech', ['scan'], 'glitch', '#00f0ff'],
+  ['手寫底線', 'paper', ['underline'], 'rise', '#e05a4f'],
+  ['方塊拼接', 'dark', ['tiles'], 'zoom', '#8e6cc4'],
+  ['流動漸層', 'grad', [], 'zoom', '#6a5cff'],
+  ['星際穿越', 'stars', [], 'track', '#ffffff'],
+  ['復古膠片', 'film', ['frame'], 'fade', '#f2d8a6'],
+  ['極簡線條', 'dark', ['lines'], 'track', '#ffffff'],
+  ['彈跳文字', 'pastel', [], 'bounce', '#ff7aa2'],
+  ['墨水暈染', 'paper', ['ink'], 'fade', '#1d3557'],
+  ['科技網格', 'tech', [], 'rise', '#00f0ff'],
+  ['夕陽旅行', 'sunset', [], 'rise', '#fff3d6'],
+];
+const T_OUT = [
+  ['感謝觀看', 'dark', ['glow'], 'fade', '#f0a83a', '感謝觀看', '我們下次見'],
+  ['訂閱提醒', 'dark', ['subscribe'], 'rise', '#e0352b', '喜歡就訂閱吧', ''],
+  ['片尾名單', 'dark', [], 'roll', '#f0a83a', '感謝觀看', '剪輯　小柯\n攝影　小柯\n音樂　自備配樂\n特別感謝　每一位觀眾'],
+  ['下集預告', 'grad', ['arrow'], 'rise', '#ff6b4a', '下集預告', '更多精彩，敬請期待'],
+  ['圓形收合', 'dark', ['iris'], 'fade', '#ffffff', '下次見', ''],
+  ['霓虹結尾', 'neon', [], 'neon', '#4fd8ff', 'THE END', '感謝收看'],
+  ['電影結尾', 'dark', ['bars'], 'track', '#e8d5a3', '劇　終', 'THE END'],
+  ['星空結尾', 'stars', [], 'fade', '#ffffff', '感謝觀看', '我們下次見'],
+  ['打字機結尾', 'dark', ['scan'], 'type', '#7cffb2', '謝謝收看', '下一支影片見'],
+  ['彩帶慶祝', 'pastel', ['confetti'], 'bounce', '#ff7aa2', '完成啦！', '謝謝你看到最後'],
+  ['社群追蹤', 'dark', ['socials'], 'rise', '#f0a83a', '追蹤我們', '@你的帳號'],
+  ['漸層淡出', 'grad', [], 'fade', '#3a78ad', '感謝觀看', '我們下次見'],
+  ['極簡收合', 'dark', ['lines'], 'track', '#ffffff', 'FIN', '感謝觀看'],
+  ['故障結束', 'tech', ['scan'], 'glitch', '#00f0ff', 'GAME OVER', '感謝觀看'],
+  ['復古膠片', 'film', ['frame'], 'fade', '#f2d8a6', '終', '感謝觀看'],
+  ['紙張手寫', 'paper', ['underline'], 'rise', '#e05a4f', '謝謝收看', '下次見'],
+  ['愛心飛舞', 'pastel', ['hearts'], 'zoom', '#ff5c8a', '謝謝你', '記得按讚分享'],
+  ['光芒放射', 'gold', ['rays'], 'zoom', '#f3c75f', '感謝觀看', '我們下次見'],
+  ['海洋浪花', 'ocean', ['ripples'], 'fade', '#ffffff', '感謝觀看', '我們下次見'],
+  ['夕陽餘暉', 'sunset', [], 'fade', '#fff3d6', '旅程未完待續', '下一站見'],
+];
+const TPL = {};
+T_IN.forEach(([name, bg, decor, anim, acc], i) => { TPL['intro' + i] = { name, bg, decor, anim, acc, title: '我的影片標題', sub: '副標題・2026 年 10 月', dur: 4, out: false }; });
+T_OUT.forEach(([name, bg, decor, anim, acc, title, sub], i) => { TPL['outro' + i] = { name, bg, decor, anim, acc, title, sub, dur: anim === 'roll' ? 8 : 5, out: true }; });
+
+function drawTemplate(g, W, H, t, D, tpl, gen) {
+  const S = { g, W, H, t, D, out: tpl.out, acc: gen?.accent || tpl.acc, title: gen?.title ?? tpl.title, sub: gen?.sub ?? tpl.sub };
+  const light = LIGHT_BG[tpl.bg];
+  S.fg = light ? '#26262e' : '#ffffff'; S.subFg = light ? 'rgba(38,38,46,.7)' : 'rgba(255,255,255,.78)';
+  if (tpl.bg === 'paper' && tpl.decor.includes('ink')) S.fg = S.acc;
+  g.save();
+  (BG[tpl.bg] || BG.dark)(S);
+  for (const d of tpl.decor) DECOR[d]?.pre?.(S);
+  drawTitles(S, tpl.anim);
+  for (const d of tpl.decor) DECOR[d]?.post?.(S);
+  if (tpl.out && !tpl.decor.includes('iris')) { const k = clamp((t - (D - .7)) / .7, 0, 1); if (k > 0) { g.fillStyle = `rgba(0,0,0,${k})`; g.fillRect(0, 0, W, H); } }   // 片尾最後淡到黑
+  g.restore();
+}
+
+// ---------- 圖檔（貼圖）30 個：透明背景，放到 V2 疊加在影片上 ----------
+const STK = [
+  ['右箭頭', g => { g.fillStyle = '#ffcc00'; g.strokeStyle = '#1a1a1a'; g.lineWidth = 14; g.beginPath(); g.moveTo(60, 200); g.lineTo(300, 200); g.lineTo(300, 120); g.lineTo(460, 256); g.lineTo(300, 392); g.lineTo(300, 312); g.lineTo(60, 312); g.closePath(); g.fill(); g.stroke(); }],
+  ['曲線箭頭', g => { g.strokeStyle = '#ff3b3b'; g.lineWidth = 30; g.lineCap = 'round'; g.beginPath(); g.moveTo(80, 400); g.quadraticCurveTo(120, 120, 380, 150); g.stroke(); g.fillStyle = '#ff3b3b'; g.beginPath(); g.moveTo(450, 150); g.lineTo(350, 80); g.lineTo(360, 225); g.closePath(); g.fill(); }],
+  ['紅色圈選', g => { g.strokeStyle = '#ff2d2d'; g.lineWidth = 20; g.lineCap = 'round'; g.beginPath(); for (let i = 0; i <= 120; i++) { const a = i / 100 * Math.PI * 2 - .4, r = 190 + Math.sin(i * .3) * 8 + i * .3; g.lineTo(256 + Math.cos(a) * r * 1.1, 256 + Math.sin(a) * r * .8); } g.stroke(); }],
+  ['手繪底線', g => { g.strokeStyle = '#ffd400'; g.lineWidth = 34; g.lineCap = 'round'; g.beginPath(); g.moveTo(40, 280); g.bezierCurveTo(160, 240, 300, 300, 470, 250); g.stroke(); g.lineWidth = 20; g.beginPath(); g.moveTo(90, 330); g.quadraticCurveTo(260, 300, 420, 320); g.stroke(); }],
+  ['星星', g => { starPath(g, 256, 270, 220, 95); g.fillStyle = '#ffcf33'; g.fill(); g.lineWidth = 14; g.strokeStyle = '#e09b00'; g.lineJoin = 'round'; g.stroke(); }],
+  ['愛心', g => { heartPath(g, 256, 270, 170); const gr = g.createLinearGradient(0, 80, 0, 440); gr.addColorStop(0, '#ff6b8f'); gr.addColorStop(1, '#e8264f'); g.fillStyle = gr; g.fill(); g.fillStyle = 'rgba(255,255,255,.45)'; g.beginPath(); g.ellipse(170, 190, 36, 22, -.6, 0, Math.PI * 2); g.fill(); }],
+  ['對話框', g => { g.fillStyle = '#fff'; g.strokeStyle = '#1a1a1a'; g.lineWidth = 12; roundRect(g, 40, 70, 432, 290, 70); g.fill(); g.stroke(); g.beginPath(); g.moveTo(140, 352); g.lineTo(110, 460); g.lineTo(230, 356); g.fill(); g.stroke(); g.fillRect(146, 340, 80, 24); }],
+  ['思考泡泡', g => { g.fillStyle = '#fff'; g.strokeStyle = '#1a1a1a'; g.lineWidth = 10; for (const [x, y, r] of [[256, 200, 150], [140, 230, 95], [372, 230, 95], [200, 300, 90], [320, 300, 90]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); }
+    for (const [x, y, r] of [[256, 200, 150], [140, 230, 95], [372, 230, 95], [200, 300, 90], [320, 300, 90]]) { g.beginPath(); g.arc(x, y, r - 5, 0, Math.PI * 2); g.fill(); } for (const [x, y, r] of [[120, 410, 30], [70, 470, 18]]) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); g.stroke(); } }],
+  ['爆炸框「哇！」', g => { starPath(g, 256, 256, 240, 170, 14); g.fillStyle = '#ffde00'; g.fill(); g.lineWidth = 12; g.strokeStyle = '#e8264f'; g.lineJoin = 'round'; g.stroke(); g.fillStyle = '#e8264f'; g.font = `900 150px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('哇！', 262, 266); }],
+  ['驚嘆號', g => { g.fillStyle = '#ff3b3b'; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; roundRect(g, 222, 90, 68, 220, 30); g.fill(); g.beginPath(); g.arc(256, 380, 40, 0, Math.PI * 2); g.fill(); }],
+  ['問號', g => { g.fillStyle = '#3a78ad'; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.fillStyle = '#fff'; g.font = `900 300px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('?', 256, 270); }],
+  ['打勾', g => { g.fillStyle = '#2fb36b'; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 50; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(150, 262); g.lineTo(225, 340); g.lineTo(370, 175); g.stroke(); }],
+  ['打叉', g => { g.fillStyle = '#e0352b'; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 50; g.lineCap = 'round'; g.beginPath(); g.moveTo(170, 170); g.lineTo(342, 342); g.moveTo(342, 170); g.lineTo(170, 342); g.stroke(); }],
+  ['數字 1', g => numBadge(g, '1', '#f0a83a')],
+  ['數字 2', g => numBadge(g, '2', '#3a78ad')],
+  ['數字 3', g => numBadge(g, '3', '#8e6cc4')],
+  ['特價標籤', g => { g.save(); g.translate(256, 256); g.rotate(-.2); g.fillStyle = '#e8264f'; g.beginPath(); g.moveTo(-200, -100); g.lineTo(140, -100); g.lineTo(220, 0); g.lineTo(140, 100); g.lineTo(-200, 100); g.closePath(); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(140, 0, 18, 0, Math.PI * 2); g.fill();
+    g.font = `900 110px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('特價', -40, 6); g.restore(); }],
+  ['NEW 標籤', g => { starPath(g, 256, 256, 230, 195, 18); g.fillStyle = '#2fb36b'; g.fill(); g.fillStyle = '#fff'; g.font = `900 120px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('NEW', 256, 262); }],
+  ['訂閱按鈕', g => { g.fillStyle = '#e0352b'; roundRect(g, 26, 180, 380, 150, 75); g.fill(); g.fillStyle = '#fff'; g.font = `800 82px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('訂閱', 216, 258); g.fillStyle = '#ffcc00'; bellPath(g, 452, 250, 46); g.fill(); }],
+  ['定位標記', g => { g.fillStyle = '#e8264f'; g.beginPath(); g.moveTo(256, 480); g.bezierCurveTo(120, 320, 90, 250, 90, 200); g.arc(256, 200, 166, Math.PI, 0); g.bezierCurveTo(422, 250, 392, 320, 256, 480); g.fill(); g.fillStyle = '#fff'; g.beginPath(); g.arc(256, 200, 66, 0, Math.PI * 2); g.fill(); }],
+  ['時鐘', g => { g.fillStyle = '#fff'; g.strokeStyle = '#26262e'; g.lineWidth = 24; g.beginPath(); g.arc(256, 256, 210, 0, Math.PI * 2); g.fill(); g.stroke(); g.lineCap = 'round';
+    for (let i = 0; i < 12; i++) { const a = i * Math.PI / 6; g.lineWidth = 10; g.beginPath(); g.moveTo(256 + Math.cos(a) * 170, 256 + Math.sin(a) * 170); g.lineTo(256 + Math.cos(a) * 188, 256 + Math.sin(a) * 188); g.stroke(); }
+    g.lineWidth = 20; g.beginPath(); g.moveTo(256, 256); g.lineTo(256, 130); g.moveTo(256, 256); g.lineTo(350, 300); g.stroke(); g.fillStyle = '#e0352b'; g.beginPath(); g.arc(256, 256, 18, 0, Math.PI * 2); g.fill(); }],
+  ['太陽', g => { g.fillStyle = '#ffb800'; for (let i = 0; i < 12; i++) { g.save(); g.translate(256, 256); g.rotate(i * Math.PI / 6); g.beginPath(); g.moveTo(-26, -150); g.lineTo(0, -240); g.lineTo(26, -150); g.fill(); g.restore(); } g.fillStyle = '#ffd43b'; g.beginPath(); g.arc(256, 256, 130, 0, Math.PI * 2); g.fill(); }],
+  ['月亮', g => { g.fillStyle = '#ffe58a'; g.beginPath(); g.arc(256, 256, 190, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'destination-out'; g.beginPath(); g.arc(340, 200, 160, 0, Math.PI * 2); g.fill(); g.globalCompositeOperation = 'source-over'; g.fillStyle = '#fff6c9'; starPath(g, 380, 330, 30, 12); g.fill(); starPath(g, 430, 230, 18, 7); g.fill(); }],
+  ['雲朵', g => { g.fillStyle = '#fff'; g.strokeStyle = '#9fb7c9'; g.lineWidth = 10; const parts = [[160, 290, 90], [250, 230, 120], [350, 280, 95], [420, 320, 60], [90, 330, 55]]; for (const [x, y, r] of parts) { g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); } for (const [x, y, r] of parts) { g.beginPath(); g.arc(x, y, r - 5, 0, Math.PI * 2); g.fill(); } g.fillRect(90, 300, 330, 80); }],
+  ['閃電', g => { g.fillStyle = '#ffd400'; g.strokeStyle = '#26262e'; g.lineWidth = 14; g.lineJoin = 'round'; g.beginPath(); g.moveTo(300, 30); g.lineTo(110, 290); g.lineTo(240, 290); g.lineTo(190, 480); g.lineTo(400, 200); g.lineTo(270, 200); g.closePath(); g.fill(); g.stroke(); }],
+  ['音符', g => { g.fillStyle = '#8e6cc4'; g.beginPath(); g.ellipse(170, 390, 80, 58, -.4, 0, Math.PI * 2); g.fill(); g.beginPath(); g.ellipse(390, 340, 80, 58, -.4, 0, Math.PI * 2); g.fill(); g.fillRect(226, 110, 30, 280); g.fillRect(446, 60, 30, 280); g.beginPath(); g.moveTo(226, 110); g.lineTo(476, 60); g.lineTo(476, 130); g.lineTo(226, 180); g.fill(); }],
+  ['皇冠', g => { const gr = g.createLinearGradient(0, 120, 0, 420); gr.addColorStop(0, '#ffe066'); gr.addColorStop(1, '#e0a100'); g.fillStyle = gr; g.beginPath(); g.moveTo(70, 400); g.lineTo(50, 150); g.lineTo(160, 270); g.lineTo(256, 100); g.lineTo(352, 270); g.lineTo(462, 150); g.lineTo(442, 400); g.closePath(); g.fill();
+    g.fillStyle = '#e8264f'; for (const x of [150, 256, 362]) { g.beginPath(); g.arc(x, 345, 24, 0, Math.PI * 2); g.fill(); } g.fillStyle = '#ffe066'; for (const [x, y] of [[50, 140], [256, 88], [462, 140]]) { g.beginPath(); g.arc(x, y, 22, 0, Math.PI * 2); g.fill(); } }],
+  ['閃亮光點', g => { g.fillStyle = '#fff'; g.shadowColor = '#ffe9a8'; g.shadowBlur = 40; for (const [x, y, s] of [[256, 256, 200], [110, 120, 70], [400, 400, 80]]) { g.beginPath(); g.moveTo(x, y - s); g.quadraticCurveTo(x, y, x + s * .55, y); g.quadraticCurveTo(x, y, x, y + s); g.quadraticCurveTo(x, y, x - s * .55, y); g.quadraticCurveTo(x, y, x, y - s); g.fill(); } }],
+  ['相框邊框', g => { const W = 1280, H = 720; g.strokeStyle = '#fff'; g.lineWidth = 28; g.strokeRect(44, 44, W - 88, H - 88); g.lineWidth = 6; g.strokeStyle = '#f0a83a'; g.strokeRect(78, 78, W - 156, H - 156);
+    g.fillStyle = '#f0a83a'; for (const [x, y] of [[78, 78], [W - 78, 78], [78, H - 78], [W - 78, H - 78]]) { g.beginPath(); g.arc(x, y, 16, 0, Math.PI * 2); g.fill(); } }, [1280, 720], 100],
+  ['下方標題條', g => { const W = 1280, H = 720; const gr = g.createLinearGradient(60, 0, 820, 0); gr.addColorStop(0, 'rgba(12,14,17,.85)'); gr.addColorStop(1, 'rgba(12,14,17,0)'); g.fillStyle = gr; g.fillRect(60, 560, 760, 100); g.fillStyle = '#f0a83a'; g.fillRect(60, 560, 12, 100); g.fillRect(84, 646, 300, 4); }, [1280, 720], 100],
+];
+function numBadge(g, n, col) { g.fillStyle = col; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 18; g.beginPath(); g.arc(256, 256, 190, 0, Math.PI * 2); g.stroke(); g.fillStyle = '#fff'; g.font = `900 270px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, 256, 272); }
+
+// 產生內建素材並放進 Media（縮圖用 16:9 小畫布畫出代表畫面）
+function buildLibrary() {
+  const tc = document.createElement('canvas'); tc.width = 320; tc.height = 180; const tg = tc.getContext('2d');
+  for (const [id, tpl] of Object.entries(TPL)) {
+    tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, 320, 180);
+    try { drawTemplate(tg, 320, 180, tpl.anim === 'roll' ? 3.2 : 2.6, tpl.dur, tpl, null); } catch { }
+    Media.set(id, { id, name: tpl.name, kind: 'gen', gen: id, dur: sec(tpl.dur), builtin: true, cat: tpl.out ? 'outro' : 'intro', thumb: tc.toDataURL('image/jpeg', .8) });
+  }
+  STK.forEach(([name, fn, size, scale], i) => {
+    const [w, h] = size || [512, 512], c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
+    try { fn(g); } catch { }
+    const id = 's' + i;
+    Media.set(id, { id, name, kind: 'image', img: c, w, h, dur: sec(3), builtin: true, cat: 'sticker', defScale: scale || 35, thumb: c.toDataURL('image/png') });
+  });
+}
+buildLibrary();
+
 
 /* =====================================================================
  * 播放引擎：每個片段配一個 <video>/<audio> 元素；用 WebAudio 控制音量並供匯出錄音。
@@ -1032,6 +1328,11 @@ function drawGen(c, t, W, H) {
   if (genCv.width !== W || genCv.height !== H) { genCv.width = W; genCv.height = H; }
   const g = genCtx, local = toSec(c.inPt + (t - c.start) * c.speed), k = c.gen?.kind;
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+  if (TPL[k]) {           // 片頭／片尾範本
+    g.clearRect(0, 0, W, H);
+    try { drawTemplate(g, W, H, local, toSec(c.inPt + c.dur * c.speed), TPL[k], c.gen); } catch { }
+    g.restore(); return genCv;
+  }
   if (k === 'countdown') {      // 膠卷片頭倒數
     const total = toSec(c.dur * c.speed) || 3, left = Math.max(1, Math.ceil(total - local)), frac = local % 1;
     g.fillStyle = '#2b2b2b'; g.fillRect(0, 0, W, H);
@@ -1297,11 +1598,15 @@ function renderBin() {
   $('binCount').textContent = mine.length ? `${mine.length} 個` : '';
   const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
       <div class="th" style="${m.thumb ? `background-image:url(${m.thumb})` : m.kind === 'audio' ? 'background:linear-gradient(135deg,#1e3a30,#3b9372)' : 'background:linear-gradient(135deg,#3a2418,#a8613f)'}">${m.thumb ? '' : (m.icon || '♪')}</div>
-      <span class="kind" style="background:${{ video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${{ video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>
-      <button class="add" data-add="${m.id}" title="接在時間軸最後">＋</button>
+      ${m.cat === 'sticker' ? '' : `<span class="kind" style="background:${{ video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${m.cat === 'intro' ? '片頭' : m.cat === 'outro' ? '片尾' : { video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>`}
+      <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到 V2 播放頭位置' : '接在時間軸最後'}">＋</button>
       <div class="nm">${esc(m.name)}</div><div class="du">${m.kind === 'image' ? '靜態圖片' : fmtDur(m.dur)}</div></div>`;
   $('bin').innerHTML = mine.length ? mine.map(card).join('') : '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>';
-  $('binGen').innerHTML = [...Media.values()].filter(m => m.builtin).map(card).join('') +
+  const cat = k => [...Media.values()].filter(m => m.builtin && m.cat === k);
+  $('binIntro').innerHTML = cat('intro').map(card).join('');
+  $('binOutro').innerHTML = cat('outro').map(card).join('');
+  $('binSticker').innerHTML = cat('sticker').map(m => card(m).replace('class="th" style="', `class="th" style="background:#2a2f35 url(${m.thumb}) center/${m.w > m.h ? '90% auto' : '78%'} no-repeat;`)).join('');
+  $('binGen').innerHTML = cat('basic').map(card).join('') +
     `<div class="mi" data-text="1" title="在播放頭加字幕"><div class="th" style="background:linear-gradient(135deg,#2c2240,#8e6cc4);font-family:var(--f-logo);color:#fff">字</div><span class="kind" style="background:var(--t)">文字</span><button class="add" data-addtext="1">＋</button><div class="nm">字幕／標題</div><div class="du">3.0 秒</div></div>`;
 }
 
@@ -1325,7 +1630,9 @@ function renderTimeline() {
       const m = Media.get(c.mediaId), x = toSec(c.start) * pps, w = Math.max(3, toSec(c.dur) * pps);
       let bg = '';
       if (m && m.kind === 'video' && m.thumb) bg = `background-image:url(${m.thumb})`;
+      else if (m && m.kind === 'image' && m.cat === 'sticker') bg = `background-image:url(${m.thumb});background-size:auto 80%;background-position:4px center;background-repeat:repeat-x`;
       else if (m && m.kind === 'image') bg = `background-image:url(${m.thumb})`;
+      else if (m && m.kind === 'gen' && m.thumb) bg = `background-image:url(${m.thumb})`;
       else if (m && m.kind === 'audio' && m.wave) bg = `background-image:url(${m.wave});background-size:${toSec(m.dur) * pps / c.speed}px 100%;background-position:${-toSec(c.inPt) * pps / c.speed}px 0`;
       const kind = c.type === 'text' ? 'text' : (m ? m.kind : c.type);
       const an = c.type === 'text' ? c.text.anim : null;
@@ -1385,6 +1692,14 @@ function renderInspector() {
         ${an.out !== 'none' ? rng('aoutDur', '結束秒數', an.outDur, .1, Math.min(5, toSec(c.dur)), .1, 's') : ''}
         <div class="row2"><button class="btn" data-act="animAll">把這組動畫套用到全部字幕</button></div></div>`;
     }
+    if (c.type === 'gen' && TPL[c.gen?.kind]) {
+      const tpl = TPL[c.gen.kind], g = c.gen;
+      h += `<div class="sec"><h4>${tpl.out ? '片尾' : '片頭'}文字・${esc(tpl.name)}</h4>
+        <div class="field"><label for="f_gtitle">標題</label><input type="text" id="f_gtitle" value="${esc(g.title ?? tpl.title)}"><span></span></div>
+        <div class="field" style="align-items:start"><label for="f_gsub">${tpl.anim === 'roll' ? '名單' : '副標題'}</label><textarea id="f_gsub" rows="${tpl.anim === 'roll' ? 5 : 2}">${esc(g.sub ?? tpl.sub)}</textarea><span></span></div>
+        <div class="field"><label for="f_gacc">主色</label><input type="color" id="f_gacc" value="${g.accent || tpl.acc}"><span></span></div>
+        ${tpl.anim === 'roll' ? '<p class="note">名單每一行一個項目，會由下往上捲動。</p>' : ''}</div>`;
+    }
     if (c.type === 'video' || c.type === 'audio') h += `<div class="sec"><h4>速度與音量</h4>${rng('speed', '速度', c.speed, .25, 4, .25, '×')}${rng('volume', '音量', Math.round(c.volume * 100), 0, 200, 1, '%')}
       <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>`;
     if (c.type !== 'text' && c.type !== 'audio') {
@@ -1424,7 +1739,8 @@ function say(who, text) { const d = document.createElement('div'); d.className =
 function projectSummary() {
   return {
     畫面: FORMATS[doc.format].join('x'), 總長秒: +toSec(seqDur()).toFixed(2), 播放頭秒: +toSec(UI.playhead).toFixed(2), 選取片段: UI.sel,
-    素材: [...Media.values()].map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
+    我的素材: [...Media.values()].filter(m => !m.builtin).map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
+    內建素材: Object.fromEntries(['intro', 'outro', 'sticker', 'basic'].map(k => [{ intro: '片頭(用 media.place 會自動放最前面)', outro: '片尾(自動接在最後)', sticker: '圖檔貼圖(自動貼到V2播放頭)', basic: '基本' }[k], [...Media.values()].filter(m => m.builtin && m.cat === k).map(m => m.id + ' ' + m.name).join('、')])),
     片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
       clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
       ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y, 動畫: c.text.anim || null } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look, 轉場: c.trans && c.trans.type !== 'none' ? c.trans : null, 接在前一段後面: !!prevAdjacent(c) }),
@@ -1646,8 +1962,14 @@ document.addEventListener('dragover', e => { if (e.dataTransfer && [...e.dataTra
 document.addEventListener('drop', e => { if (e.dataTransfer?.files?.length) { e.preventDefault(); importFiles([...e.dataTransfer.files]); } });
 
 // 素材箱：加到時間軸 / 拖到軌道
+function switchBinTab(k) {
+  document.querySelectorAll('#binTabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.bt === k));
+  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic']) $('bt-' + x).hidden = x !== k;
+  try { localStorage.setItem('kk-bintab', k); } catch { }
+}
+$('binTabs').addEventListener('click', e => { const b = e.target.closest('[data-bt]'); if (b) switchBinTab(b.dataset.bt); });
 document.querySelector('.bin-p').addEventListener('click', e => {
-  const a = e.target.closest('[data-add]'); if (a) { tryExec('media.place', { mediaId: a.dataset.add }); return; }
+  const a = e.target.closest('[data-add]'); if (a) { const r = tryExec('media.place', { mediaId: a.dataset.add }); if (r) { toast(r); const c = getClip(UI.sel); if (c) seek(c.start); } return; }
   if (e.target.closest('[data-addtext]')) { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); }
 });
 document.querySelector('.bin-p').addEventListener('dblclick', e => {
@@ -1760,6 +2082,9 @@ for (const pane of ['pProps', 'pColor']) {
       const [cmd, f] = PROP_MAP[k]; tryExec(cmd, Object.assign({ clipId: id }, f(v)), { coalesce: k + id, light: true });
     } else if (e.target.id === 'f_text') tryExec('text.set', { clipId: id, text: e.target.value }, { coalesce: 'text' + id, light: true });
     else if (e.target.id === 'f_color') tryExec('text.set', { clipId: id, color: e.target.value }, { coalesce: 'tcolor' + id, light: true });
+    else if (e.target.id === 'f_gtitle') tryExec('gen.set', { clipId: id, title: e.target.value }, { coalesce: 'gt' + id, light: true });
+    else if (e.target.id === 'f_gsub') tryExec('gen.set', { clipId: id, sub: e.target.value }, { coalesce: 'gs' + id, light: true });
+    else if (e.target.id === 'f_gacc') tryExec('gen.set', { clipId: id, accent: e.target.value }, { coalesce: 'ga' + id, light: true });
   });
   $(pane).addEventListener('change', e => {
     const id = UI.sel;
@@ -1930,7 +2255,8 @@ function demo() {
 demo();
 try { const tb = localStorage.getItem('kk-tab'); if (tb) switchTab(tb); } catch { }
 renderBin(); changed(); chatIntro(); updatePlayBtn();
-document.fonts && document.fonts.ready.then(() => { needDraw = true; });
+document.fonts && document.fonts.ready.then(() => { buildLibrary(); renderBin(); renderTimeline(); needDraw = true; });
+try { const bt = localStorage.getItem('kk-bintab'); if (bt) switchBinTab(bt); } catch { }
 requestAnimationFrame(loop);
 // 有 Claude 可用時，小柯就能聽懂完整的句子
 (async () => {
