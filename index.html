@@ -100,6 +100,22 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .mi .du{padding:0 6px 4px;font-size:10px;color:var(--muted);font-family:var(--f-mono)}
 .mi .add{position:absolute;top:4px;right:4px;background:#000a;border:0;border-radius:4px;color:#fff;padding:2px 6px;font-size:11px}
 .mi .kind{position:absolute;top:4px;left:4px;font-size:10px;padding:1px 5px;border-radius:3px;color:#fff}
+/* 配樂清單 */
+.mcats{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+.mcats button{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:2px 8px;font-size:11px;color:var(--muted)}
+.mcats button[aria-pressed=true]{border-color:var(--a);color:var(--fg);background:#3b937233}
+.mlist{display:flex;flex-direction:column;gap:4px}
+.mrow{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:5px 6px;cursor:grab}
+.mrow:hover{border-color:#46505a}
+.mrow .pv{flex:none;width:26px;height:26px;border-radius:50%;border:0;background:var(--a);color:#fff;font-size:11px;display:grid;place-items:center;padding:0}
+.mrow .mt{flex:1;min-width:0;display:flex;flex-direction:column}
+.mrow .mt b{font-weight:500;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.mrow .mt small{font-size:10px;color:var(--muted);font-family:var(--f-mono)}
+.mrow .add2{flex:none;background:#000a;border:0;border-radius:4px;color:#fff;padding:2px 7px;font-size:11px}
+/* 版本更新 */
+.has-upd{position:relative}
+.has-upd::after{content:'';position:absolute;top:3px;right:3px;width:8px;height:8px;border-radius:50%;background:var(--danger)}
+.notes{white-space:pre-wrap;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:8px;font-family:inherit;font-size:12px;max-height:180px;overflow:auto;margin:8px 0}
 
 /* 監看螢幕 */
 .monitor{display:flex;flex-direction:column}
@@ -256,6 +272,7 @@ textarea{resize:vertical;width:100%}
     <button class="btn ghost icon" id="bRedo" title="重做 (Ctrl+Shift+Z)">↷ 重做</button>
     <button class="btn" id="bOpen" title="開啟專案檔 (.json)">開啟專案</button>
     <button class="btn" id="bSave" title="儲存專案檔 (.json)">儲存專案</button>
+    <button class="btn ghost" id="bVer" title="版本與更新">v</button>
     <button class="btn" id="bKeys">快捷鍵</button>
     <button class="btn primary" id="bExport">匯出影片</button>
   </header>
@@ -265,7 +282,7 @@ textarea{resize:vertical;width:100%}
       <div class="ph">素材箱 <span class="muted" id="binCount"></span></div>
       <div class="pb">
         <div class="bintabs" role="tablist" id="binTabs">
-          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button>
+          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button><button data-bt="mask" aria-selected="false">蒙版 30</button><button data-bt="green" aria-selected="false">綠幕 20</button><button data-bt="music" aria-selected="false">配樂 110</button><button data-bt="text" aria-selected="false">字幕 12</button>
         </div>
         <div id="bt-mine">
           <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
@@ -276,6 +293,10 @@ textarea{resize:vertical;width:100%}
         <div id="bt-outro" hidden><p class="note">按「＋」接在 V1 主畫面最後。</p><div class="bin" id="binOutro"></div></div>
         <div id="bt-sticker" hidden><p class="note">按「＋」貼到播放頭位置（自動放進空著的 V2／V3／V4 疊加軌，最多同時疊三個），再到監看畫面上拖曳擺位、用「縮放」調大小。</p><div class="bin bin3" id="binSticker"></div></div>
         <div id="bt-basic" hidden><div class="bin" id="binGen"></div></div>
+        <div id="bt-mask" hidden><p class="note">先在時間軸選好畫面片段，再按「＋」套用蒙版：形狀外面會變透明，露出下層軌道。柔化、反轉在右邊「片段屬性」調整。</p><div class="bin bin3" id="binMask"></div></div>
+        <div id="bt-green" hidden><p class="note">按「＋」放到播放頭位置的疊加軌（V2／V3／V4），並自動開啟綠幕去背，下面的畫面會透出來。自己的綠幕影片也能在「片段屬性」開啟去背。</p><div class="bin" id="binGreen"></div></div>
+        <div id="bt-music" hidden><p class="note">全部由程式即時合成，沒有版權問題，可以放心用在任何影片。按 ▶ 試聽，按「＋」放到播放頭位置的配樂軌。</p><div class="mcats" id="musicCats"></div><div class="mlist" id="binMusic"></div></div>
+        <div id="bt-text" hidden><p class="note">按「＋」在播放頭加一句這種樣式的字幕，再到右邊改文字。</p><div class="bin-sec" style="margin-top:0">一般文字</div><div class="bin" id="binText"></div><div class="bin-sec">3D 立體文字動畫</div><div class="bin" id="binText3d"></div></div>
         <div class="bin-sec">字幕檔</div>
         <div class="row2">
           <button class="btn" id="bSrtIn">匯入 SRT</button>
@@ -363,6 +384,19 @@ textarea{resize:vertical;width:100%}
       <button class="btn" id="exCancel" hidden>取消匯出</button>
       <button class="btn" id="exSave" hidden>儲存到電腦</button>
       <button class="btn primary" id="exGo">開始匯出</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="updOv" hidden>
+  <div class="dlg" role="dialog" aria-labelledby="updTitle">
+    <h3 id="updTitle">版本與更新</h3>
+    <div id="updBody"></div>
+    <div class="bar" id="updBarWrap" hidden><i id="updProg"></i></div>
+    <div class="row2" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn" id="updClose">關閉</button>
+      <button class="btn" id="updCheck">重新檢查</button>
+      <button class="btn primary" id="updGo" hidden>立即更新</button>
     </div>
   </div>
 </div>
@@ -683,7 +717,11 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
     doc.clips.push(c); UI.sel = c.id;
     return `${p.mode === 'intro' ? '片頭放在影片最前面' : '片尾接在 V1 最後'}：片段 #${c.id}，${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
   }
-  if (m.cat === 'sticker' && !p.track && !p.mode && p.start == null) { p.track = freeOverlayTrack(snapF(UI.playhead), snapF(UI.playhead) + m.dur); p.mode = 'overwrite'; }
+  if ((m.cat === 'sticker' || m.cat === 'green') && !p.track && !p.mode && p.start == null) { p.track = freeOverlayTrack(snapF(UI.playhead), snapF(UI.playhead) + m.dur); p.mode = 'overwrite'; }
+  if (m.cat === 'music' && !p.track && !p.mode && p.start == null) {     // 配樂：放在播放頭位置，優先用空著的 A2，再來 A1
+    const s0 = snapF(UI.playhead), e0 = s0 + m.dur;
+    p.track = ['A2', 'A1'].find(tr => !doc.clips.some(c => c.track === tr && c.start < e0 && clipEnd(c) > s0)) || 'A2'; p.mode = 'overwrite';
+  }
   const track = p.track || (m.kind === 'audio' ? 'A1' : 'V1');
   const k = trackKind(track);
   if (!k || (m.kind === 'audio') !== (k === 'audio') || k === 'text') throw new Error(`${m.name} 不能放到 ${track}`);
@@ -693,6 +731,8 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
   const c = makeClip(type, track, start, m.dur, { mediaId: m.id });
   if (m.kind === 'gen') c.gen = { kind: m.gen, color: m.color };
   if (m.cat === 'sticker') c.tf.scale = m.defScale || 35;
+  if (m.cat === 'green') c.key = { on: true, color: 'green', amt: 50 };
+  if (m.music) ensureMusic(m);
   if (mode === 'insert') {
     for (const x of doc.clips) if (x.track === track && x.start < c.start && clipEnd(x) > c.start) splitClip(x, c.start);
     for (const x of doc.clips) if (x.track === track && x.start >= c.start) x.start += c.dur;
@@ -733,11 +773,14 @@ defCmd('color.set', '調色', '{clipId?|all?, look?:"none|warm|cool|teal|mono|vi
   }
   return `調整了 ${list.length} 個片段的顏色`;
 });
-defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), duration?秒(預設3), style?:"subtitle"|"title", track?:"T1"|"T2"|"T3"(預設找空的軌), x?%, y?%}', p => {
-  const content = String(p.text ?? '').trim() || '在這裡輸入字幕';
+defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), duration?秒(預設3), style?:"subtitle"|"title", preset?:字幕樣式(tp0一般字幕|tp1大標題|tp2描邊粗字|tp3綜藝黃字|tp4上方標註|tp5打字機字幕|td0~td5 3D立體文字：立體翻轉、Y軸旋轉、立體浮動、彈跳放大、逐字升起、透視推進), track?:"T1"|"T2"|"T3"(預設找空的軌), x?%, y?%}', p => {
+  const P = p.preset != null ? TPRE[p.preset] : null;
+  if (p.preset != null && !P) throw new Error('沒有這個字幕樣式：' + p.preset);
+  const content = String(p.text ?? '').trim() || (P?.d3 ? '3D 立體文字' : '在這裡輸入字幕');
   const st = snapF(p.start != null ? sec(Number(p.start)) : UI.playhead), du = sec(Number(p.duration) || 3);
   const track = TEXT_TRACKS.includes(p.track) ? p.track : freeTextTrack(st, st + du);
   const c = makeClip('text', track, st, du, { text: textDefaults(content, p.style === 'title' ? 'title' : 'subtitle') });
+  if (P) { Object.assign(c.text, structuredClone(P.d3 ? TEXT3D_BASE : P.text), { x: 50 }); if (P.anim) c.text.anim = { ...P.anim }; if (P.d3) c.text.d3 = structuredClone(P.d3); }
   if (p.x != null) c.text.x = clamp(Number(p.x), 0, 100);
   if (p.y != null) c.text.y = clamp(Number(p.y), 0, 100);
   overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c); UI.sel = c.id;
@@ -881,8 +924,10 @@ async function makeWave(file, m) {      // 解碼音訊並畫出波形圖
   const buf = await file.arrayBuffer();
   const ac = new OfflineAudioContext(1, 1, 44100);
   const ab = await ac.decodeAudioData(buf);
-  const ch = ab.getChannelData(0);
-  const W = Math.min(6000, Math.max(200, Math.round(ab.duration * 40))), H = 60;
+  m.wave = waveImage(ab.getChannelData(0), ab.duration); renderTimeline();
+}
+function waveImage(ch, duration) {
+  const W = Math.min(6000, Math.max(200, Math.round(duration * 40))), H = 60;
   const step = Math.max(1, Math.floor(ch.length / W));
   const c = document.createElement('canvas'); c.width = W; c.height = H;
   const g = c.getContext('2d'); g.fillStyle = 'rgba(255,255,255,.55)';
@@ -891,7 +936,7 @@ async function makeWave(file, m) {      // 解碼音訊並畫出波形圖
     for (let i = 0; i < step; i += 8) { const v = Math.abs(ch[o + i] || 0); if (v > mx) mx = v; }
     const h = Math.max(1, mx * H * .95); g.fillRect(x, (H - h) / 2, 1, h);
   }
-  m.wave = c.toDataURL('image/png'); renderTimeline();
+  return c.toDataURL('image/png');
 }
 // 開啟專案檔後，名稱相同的素材匯入時自動接回
 function relinkOffline(m) {
@@ -1213,7 +1258,644 @@ function buildLibrary() {
     const id = 's' + i;
     Media.set(id, { id, name, kind: 'image', img: c, w, h, dur: sec(3), builtin: true, cat: 'sticker', defScale: scale || 35, thumb: c.toDataURL('image/png') });
   });
+  buildLibrary2(tc, tg);
 }
+
+/* =====================================================================
+ * 素材庫擴充：蒙版 30、綠幕 20、配樂 110、字幕樣式（一般 6＋3D 立體 6）
+ * 全部用程式產生：形狀用 canvas 畫、配樂用 WebAudio 離線合成，沒有外部檔案，也沒有版權問題。
+ * ===================================================================== */
+const scratchCv = {};
+function scratch(k, w, h) { let c = scratchCv[k]; if (!c) c = scratchCv[k] = document.createElement('canvas'); if (c.width !== w || c.height !== h) { c.width = w; c.height = h; } return c; }
+function mixHex(a, b, k) { const p = h => [1, 3, 5].map(i => parseInt(String(h).slice(i, i + 2), 16) || 0), x = p(a), y = p(b); return '#' + x.map((v, i) => Math.round(lerp(v, y[i], k)).toString(16).padStart(2, '0')).join(''); }
+
+// ---------- 蒙版：套在畫面片段上，只露出形狀範圍（形狀外變透明，看得到下層軌道） ----------
+// fn(g, w, h, t)：以片段中心為原點，用目前的 fillStyle 畫出「要露出來」的範圍；w×h 是片段在畫面上的大小，t 是片段內秒數（動態蒙版用）
+const poly = (g, pts) => { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); g.fill(); };
+const ngon = (g, n, r, rot) => poly(g, Array.from({ length: n }, (_, i) => [Math.cos(rot + i * 2 * Math.PI / n) * r, Math.sin(rot + i * 2 * Math.PI / n) * r]));
+const circ = (g, x, y, r) => { g.beginPath(); g.arc(x, y, Math.max(0, r), 0, Math.PI * 2); g.fill(); };
+const MASKS = [
+  ['circle', '圓形', (g, w, h) => circ(g, 0, 0, Math.min(w, h) * .45)],
+  ['ellipse', '橢圓', (g, w, h) => { g.beginPath(); g.ellipse(0, 0, w * .45, h * .45, 0, 0, Math.PI * 2); g.fill(); }],
+  ['round', '圓角矩形', (g, w, h) => { roundRect(g, -w * .42, -h * .42, w * .84, h * .84, Math.min(w, h) * .12); g.fill(); }],
+  ['diamond', '菱形', (g, w, h) => poly(g, [[0, -h * .47], [w * .47, 0], [0, h * .47], [-w * .47, 0]])],
+  ['triangle', '三角形', (g, w, h) => { const s = Math.min(w, h) * .46; poly(g, [[0, -s], [s * 1.15, s * .8], [-s * 1.15, s * .8]]); }],
+  ['star', '五角星', (g, w, h) => { const s = Math.min(w, h) * .48; starPath(g, 0, s * .08, s, s * .42); g.fill(); }],
+  ['hexagon', '六角形', (g, w, h) => ngon(g, 6, Math.min(w, h) * .46, 0)],
+  ['octagon', '八角形', (g, w, h) => ngon(g, 8, Math.min(w, h) * .46, Math.PI / 8)],
+  ['heart', '愛心', (g, w, h) => { const s = Math.min(w, h) * .4; heartPath(g, 0, s * .05, s); g.fill(); }],
+  ['cloud', '雲朵', (g, w, h) => { const s = Math.min(w, h) * .2; for (const [x, y, r] of [[-1.5, .4, 1], [-.6, -.3, 1.3], [.6, -.5, 1.5], [1.6, .3, 1.05], [0, .55, 1.1]]) circ(g, x * s, y * s, r * s); g.fillRect(-1.5 * s, .4 * s, 3.1 * s, s); }],
+  ['bubble', '對話框', (g, w, h) => { roundRect(g, -w * .42, -h * .4, w * .84, h * .62, Math.min(w, h) * .1); g.fill(); poly(g, [[-w * .2, h * .2], [-w * .05, h * .2], [-w * .26, h * .44]]); }],
+  ['arch', '拱門', (g, w, h) => { const a = Math.min(w * .32, h * .42), b = h * .46; g.beginPath(); g.moveTo(-a, b); g.lineTo(-a, -b + a); g.arc(0, -b + a, a, Math.PI, 0); g.lineTo(a, b); g.closePath(); g.fill(); }],
+  ['shield', '盾牌', (g, w, h) => { const s = Math.min(w, h) * .46; g.beginPath(); g.moveTo(-s * .8, -s); g.lineTo(s * .8, -s); g.lineTo(s * .8, 0); g.quadraticCurveTo(s * .8, s * .7, 0, s); g.quadraticCurveTo(-s * .8, s * .7, -s * .8, 0); g.closePath(); g.fill(); }],
+  ['cross', '十字', (g, w, h) => { const s = Math.min(w, h) * .46; g.fillRect(-s * .3, -s, s * .6, s * 2); g.fillRect(-s, -s * .3, s * 2, s * .6); }],
+  ['arrow', '箭頭', (g, w, h) => { const s = Math.min(w, h) * .46; poly(g, [[-s * 1.3, -s * .35], [s * .2, -s * .35], [s * .2, -s * .8], [s * 1.3, 0], [s * .2, s * .8], [s * .2, s * .35], [-s * 1.3, s * .35]]); }],
+  ['moon', '月亮', (g, w, h) => { const s = Math.min(w, h) * .45; circ(g, 0, 0, s); g.save(); g.globalCompositeOperation = 'destination-out'; circ(g, s * .45, -s * .25, s * .85); g.restore(); }],
+  ['flower', '花朵', (g, w, h) => { const s = Math.min(w, h) * .2; for (let i = 0; i < 6; i++) { const a = i * Math.PI / 3; circ(g, Math.cos(a) * s * 1.2, Math.sin(a) * s * 1.2, s); } circ(g, 0, 0, s * 1.2); }],
+  ['drop', '水滴', (g, w, h) => { const s = Math.min(w, h) * .46; g.beginPath(); g.moveTo(0, -s); g.bezierCurveTo(s * .3, -s * .55, s * .66, -s * .1, s * .66, s * .3); g.arc(0, s * .3, s * .66, 0, Math.PI); g.bezierCurveTo(-s * .66, -s * .1, -s * .3, -s * .55, 0, -s); g.fill(); }],
+  ['pill', '膠囊', (g, w, h) => { roundRect(g, -w * .42, -h * .24, w * .84, h * .48, Math.min(h * .24, w * .42)); g.fill(); }],
+  ['keyhole', '鑰匙孔', (g, w, h) => { const s = Math.min(w, h) * .46; circ(g, 0, -s * .35, s * .45); poly(g, [[-s * .2, -s * .1], [s * .2, -s * .1], [s * .45, s], [-s * .45, s]]); }],
+  ['slant', '斜切', (g, w, h) => poly(g, [[-w * .32, -h * .45], [w * .48, -h * .45], [w * .32, h * .45], [-w * .48, h * .45]])],
+  ['left', '左半畫面', (g, w, h) => g.fillRect(-w / 2, -h / 2, w / 2, h)],
+  ['right', '右半畫面', (g, w, h) => g.fillRect(0, -h / 2, w / 2, h)],
+  ['cinema', '電影寬銀幕', (g, w, h) => { const bh = Math.min(h, w / 2.39); g.fillRect(-w / 2, -bh / 2, w, bh); }],
+  ['portrait', '直式中段', (g, w, h) => { const bw = Math.min(w, h * 9 / 16); g.fillRect(-bw / 2, -h / 2, bw, h); }],
+  ['soft', '柔邊暈影', (g, w, h) => { g.beginPath(); g.ellipse(0, 0, w * .4, h * .4, 0, 0, Math.PI * 2); g.fill(); }, 35],
+  ['irisOpen', '圓形展開（動態）', (g, w, h, t) => circ(g, 0, 0, ease(t / 1.2) * Math.hypot(w, h) / 2)],
+  ['wipe', '由左擦入（動態）', (g, w, h, t) => g.fillRect(-w / 2, -h / 2, w * ease(t), h)],
+  ['blinds', '百葉窗（動態）', (g, w, h, t) => { const n = 8, sh = h / n; for (let i = 0; i < n; i++) g.fillRect(-w / 2, -h / 2 + i * sh, w, sh * ease((t - i * .06) / .7)); }],
+  ['spot', '聚光燈（動態）', (g, w, h, t) => circ(g, Math.sin(t * .9) * w * .28, Math.sin(t * 1.3 + 1) * h * .18, Math.min(w, h) * .3), 20],
+];
+const MASK = Object.fromEntries(MASKS.map(([id, name, fn, feather]) => [id, { id, name, fn, feather: feather || 0 }]));
+// 先把片段畫到暫存畫布，再用形狀（可柔化、反轉）裁切後疊回去
+function drawMasked(c, t, mk) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
+  const V = scratch('mv', W, H), vg = V.getContext('2d'); vg.setTransform(1, 0, 0, 1, 0, 0); vg.clearRect(0, 0, W, H);
+  const saved = ctx; let geo; ctx = vg; try { geo = drawVisualBody(c, t); } finally { ctx = saved; }
+  if (!geo) return;
+  const S = scratch('ms', W, H), sg = S.getContext('2d'); sg.setTransform(1, 0, 0, 1, 0, 0); sg.clearRect(0, 0, W, H);
+  sg.save(); sg.translate(geo.cx, geo.cy); sg.rotate(geo.rot); sg.fillStyle = '#fff';
+  try { mk.fn(sg, geo.dw, geo.dh, toSec(t - c.start)); } catch { }
+  sg.restore();
+  if (c.mask.invert) { sg.globalCompositeOperation = 'xor'; sg.fillStyle = '#fff'; sg.fillRect(0, 0, W, H); sg.globalCompositeOperation = 'source-over'; }
+  const f = (c.mask.feather ?? mk.feather) / 100 * Math.min(geo.dw, geo.dh) * .25;
+  vg.save(); vg.globalCompositeOperation = 'destination-in'; if (f > .5) vg.filter = `blur(${f.toFixed(1)}px)`; vg.drawImage(S, 0, 0); vg.restore();
+  ctx.drawImage(V, 0, 0);
+}
+
+// ---------- 綠幕去背（色度鍵）：綠色（或藍色）比其他顏色明顯多的像素變透明，邊緣去除溢色 ----------
+function chromaKey(src, sw, sh, key) {
+  const sc = Math.min(1, 1280 / Math.max(sw, sh)), w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+  const K = scratch('key', w, h), g = K.getContext('2d', { willReadFrequently: true });
+  g.clearRect(0, 0, w, h); g.drawImage(src, 0, 0, w, h);
+  let im; try { im = g.getImageData(0, 0, w, h); } catch { return null; }
+  const d = im.data, blue = key.color === 'blue', lo = 70 - clamp(key.amt ?? 50, 0, 100) * .6, hi = lo + 45;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gg = d[i + 1], b = d[i + 2], m = blue ? b - Math.max(r, gg) : gg - Math.max(r, b);
+    if (m <= 0) continue;
+    if (blue) d[i + 2] = Math.max(r, gg); else d[i + 1] = Math.max(r, b);
+    if (m > lo) d[i + 3] = m >= hi ? 0 : d[i + 3] * (1 - (m - lo) / (hi - lo));
+  }
+  g.putImageData(im, 0, 0);
+  return K;
+}
+
+// ---------- 綠幕素材 20 個：綠色背景＋動態元素（放到疊加軌會自動去背） ----------
+const CONF = ['#ff2d55', '#ffd400', '#2d9cff', '#ff8a00', '#b06bff', '#ffffff'];
+const GS = [
+  ['訂閱按鈕', 4, ({ g, W, H, t }) => { const u = H / 100, k = easeBack(clamp(t / .5, 0, 1)), done = t > 1.6;
+    g.save(); g.translate(W / 2 - 6 * u, H / 2); g.scale(k, k);
+    g.fillStyle = done ? '#55595f' : '#e0352b'; roundRect(g, -22 * u, -7 * u, 44 * u, 14 * u, 7 * u); g.fill();
+    g.fillStyle = '#fff'; g.font = `800 ${7 * u}px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(done ? '已訂閱' : '訂閱', 0, .5 * u);
+    g.save(); g.translate(30 * u, 0); g.rotate(done ? Math.sin(t * 20) * .3 * Math.max(0, 1 - (t - 1.6)) : 0); g.fillStyle = '#fff'; bellPath(g, 0, 0, 5 * u); g.fill(); g.restore(); g.restore();
+    if (t > .6 && t < 2.6) { const p = ease((t - .6) / .9), s = t > 1.5 && t < 1.7 ? .85 : 1; g.save(); g.translate(lerp(W * .75, W / 2 - 2 * u, p), lerp(H * .85, H / 2 + 3 * u, p)); g.scale(s, s); g.fillStyle = '#fff'; g.strokeStyle = '#000'; g.lineWidth = .4 * u; cursorPath(g, 0, 0, 7 * u); g.fill(); g.stroke(); g.restore(); } }],
+  ['按讚', 3, ({ g, W, H, t }) => { const u = H / 100, k = easeBack(clamp(t / .45, 0, 1)), wob = Math.sin(t * 9) * .08 * Math.max(0, 1 - t);
+    g.save(); g.translate(W / 2, H / 2); g.rotate(-.15 + wob); g.scale(k, k); g.fillStyle = '#1877f2'; circ(g, 0, 0, 22 * u); g.fillStyle = '#fff';
+    roundRect(g, -12 * u, -1 * u, 6 * u, 13 * u, 1.5 * u); g.fill(); roundRect(g, -4 * u, -2 * u, 15 * u, 14 * u, 3.5 * u); g.fill(); roundRect(g, -2 * u, -14 * u, 7 * u, 15 * u, 3.5 * u); g.fill(); g.restore();
+    const p = clamp((t - .35) / .6, 0, 1); if (p > 0 && p < 1) { g.strokeStyle = `rgba(255,214,0,${1 - p})`; g.lineWidth = 1.4 * u; for (let i = 0; i < 10; i++) { const a = i / 10 * Math.PI * 2, r = (24 + p * 16) * u; g.beginPath(); g.moveTo(W / 2 + Math.cos(a) * r, H / 2 + Math.sin(a) * r); g.lineTo(W / 2 + Math.cos(a) * (r + 5 * u), H / 2 + Math.sin(a) * (r + 5 * u)); g.stroke(); } } }],
+  ['愛心飛出', 4, ({ g, W, H, t }) => { const u = H / 100; for (let i = 0; i < 26; i++) { const k = (t - rnd(i) * 2.2) / 1.8; if (k <= 0 || k >= 1) continue;
+    const x = W / 2 + (rnd(i + 9) - .5) * 60 * u * k + Math.sin(k * 6 + i) * 3 * u, y = H * .85 - k * 70 * u, s = (3 + rnd(i + 3) * 4) * u * Math.min(1, k / .15);
+    g.globalAlpha = k > .7 ? (1 - k) / .3 : 1; g.fillStyle = ['#ff2d55', '#ff6b9a', '#ff9fb8', '#e8264f'][i % 4]; heartPath(g, x, y, s); g.fill(); } g.globalAlpha = 1; }],
+  ['爆炸', 3, ({ g, W, H, t }) => { const u = H / 100, cx = W / 2, cy = H / 2, k = ease(t / .5), p = clamp((t - .2) / 2.2, 0, 1);
+    if (p > 0) for (let i = 0; i < 9; i++) { g.fillStyle = `rgba(90,90,95,${(1 - p) * .8})`; circ(g, cx + Math.cos(i * .7) * 18 * u * p, cy - 10 * u * p + Math.sin(i * 1.3) * 10 * u * p, (8 + rnd(i) * 6) * u * (.5 + p)); }
+    g.globalAlpha = clamp(1.6 - t, 0, 1); const R = 34 * u * k; g.fillStyle = '#ff5a1f'; starPath(g, cx, cy, R, R * .55, 14); g.fill(); g.fillStyle = '#ffc21a'; starPath(g, cx, cy, R * .72, R * .4, 12); g.fill(); g.fillStyle = '#fff6c8'; circ(g, cx, cy, R * .3);
+    g.fillStyle = '#ffb000'; for (let i = 0; i < 24; i++) { const a = rnd(i + 40) * Math.PI * 2, r = (10 + 50 * ease(t / 1.2)) * u * (.6 + rnd(i) * .6); circ(g, cx + Math.cos(a) * r, cy + Math.sin(a) * r + t * t * 6 * u, 1.2 * u); } g.globalAlpha = 1; }],
+  ['煙火', 4, ({ g, W, H, t }) => { const u = H / 100; [[.3, .3, 0, 0], [.7, .25, .9, 330], [.5, .35, 1.8, 42]].forEach(([fx, fy, st, hue], j) => { const k = t - st; if (k < 0) return; const x = W * fx, y = H * fy;
+    if (k < .6) { g.fillStyle = '#ffe9a8'; circ(g, x, H - (H - y) * ease(k / .6), .8 * u); return; }
+    const p = (k - .6) / 1.6; if (p >= 1) return; g.globalAlpha = 1 - p; for (let i = 0; i < 40; i++) { const a = i / 40 * Math.PI * 2, r = 22 * u * ease(p) * (.8 + rnd(i + j * 50) * .3); g.fillStyle = `hsl(${hue + (i % 3) * 8},95%,62%)`; circ(g, x + Math.cos(a) * r, y + Math.sin(a) * r + p * p * 8 * u, .9 * u); } g.globalAlpha = 1; }); }],
+  ['閃電', 3, ({ g, W, H, t }) => { if (t % 1 > .35) return; const u = H / 100, seed = Math.floor(t) + 1; g.save(); g.globalAlpha = t % 1 < .08 || t % 1 > .2 ? 1 : .4; g.shadowColor = '#bcd7ff'; g.shadowBlur = 6 * u; g.strokeStyle = '#ffffff'; g.lineWidth = 1.6 * u; g.lineJoin = 'round';
+    g.beginPath(); let x = W * (.35 + rnd(seed) * .3), y = 0; g.moveTo(x, y); while (y < H * .9) { y += (6 + rnd(seed * 31 + y) * 8) * u; x += (rnd(seed * 17 + y) - .5) * 14 * u; g.lineTo(x, y); } g.stroke(); g.shadowBlur = 0; g.lineWidth = .7 * u; g.strokeStyle = '#fff59d'; g.stroke(); g.restore(); }],
+  ['火焰', 4, ({ g, W, H, t }) => { const u = H / 100; for (let L = 0; L < 3; L++) for (let i = 0; i < 14; i++) { const x = W * (.2 + i / 13 * .6), fl = Math.sin(t * (7 + i % 3) + i * 1.7) * .5 + .5, h = (18 + rnd(i + L * 20) * 22) * u * (1 - L * .25) * (.75 + fl * .35), w = 5 * u * (1 - L * .2);
+    g.fillStyle = ['#ff3d00', '#ff9100', '#ffd54f'][L]; g.beginPath(); g.moveTo(x - w, H * .9); g.quadraticCurveTo(x - w * 1.1, H * .9 - h * .5, x + Math.sin(t * 5 + i) * 2 * u, H * .9 - h); g.quadraticCurveTo(x + w * 1.1, H * .9 - h * .5, x + w, H * .9); g.closePath(); g.fill(); } }],
+  ['彩帶噴發', 4, ({ g, W, H, t }) => { const u = H / 100; for (let i = 0; i < 120; i++) { const k = t - rnd(i) * .3; if (k < 0) continue; const vx = (20 + rnd(i + 5) * 35) * u, vy = (60 + rnd(i + 7) * 40) * u;
+    const x = i % 2 ? W - vx * k : vx * k, y = H - vy * k + 34 * u * k * k; if (y > H + 5 * u) continue; g.save(); g.translate(x, y); g.rotate(k * (4 + rnd(i) * 6)); g.fillStyle = CONF[i % 6]; g.fillRect(-u, -.5 * u, 2 * u, 1.2 * u * (1 + Math.sin(k * 10 + i))); g.restore(); } }],
+  ['3-2-1 倒數', 4, ({ g, W, H, t }) => { const u = H / 100, i = Math.min(3, Math.floor(t)), k = t - i, s = easeBack(clamp(k / .35, 0, 1));
+    g.save(); g.translate(W / 2, H / 2); g.scale(s, s); g.globalAlpha = k > .85 && i < 3 ? (1 - k) / .15 : 1; g.fillStyle = '#1b1d22'; circ(g, 0, 0, 24 * u); g.lineWidth = 2.5 * u; g.strokeStyle = '#ffd400'; g.beginPath(); g.arc(0, 0, 24 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, k)); g.stroke();
+    g.fillStyle = '#fff'; g.font = `900 ${i < 3 ? 30 * u : 17 * u}px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(['3', '2', '1', 'GO!'][i], 0, 1.5 * u); g.restore(); }],
+  ['新聞快訊條', 5, ({ g, W, H, t }) => { const u = H / 100, x0 = lerp(-30 * u, 6 * u, ease(t / .6)), y = H * .74, k2 = ease((t - .3) / .6);
+    g.fillStyle = '#d7191c'; g.fillRect(x0, y, 22 * u, 11 * u); g.fillStyle = '#fff'; g.font = `800 ${6 * u}px ${FF}`; g.textBaseline = 'middle'; g.textAlign = 'center'; g.fillText('快訊', x0 + 11 * u, y + 5.7 * u);
+    g.fillStyle = '#ffffff'; g.fillRect(28 * u, y, (W - 34 * u) * k2, 11 * u); g.fillStyle = '#1b1d22'; g.fillRect(28 * u, y + 11 * u, (W - 34 * u) * k2, 6 * u);
+    if (k2 > .9) { g.save(); g.beginPath(); g.rect(28 * u, y, W - 34 * u, 17 * u); g.clip(); g.textAlign = 'left'; g.fillStyle = '#1b1d22'; g.font = `700 ${5.4 * u}px ${FF}`; g.fillText('重大消息：在這裡放上你的標題', 31 * u, y + 5.7 * u);
+      g.fillStyle = '#fff'; g.font = `500 ${3.4 * u}px ${FF}`; g.fillText('最新動態持續更新中・歡迎訂閱追蹤・'.repeat(6), 31 * u - (t * 14 * u) % (80 * u), y + 14 * u); g.restore(); } }],
+  ['對話泡泡', 3, ({ g, W, H, t }) => { const u = H / 100, s = easeBack(clamp(t / .4, 0, 1));
+    g.save(); g.translate(W / 2, H / 2); g.rotate(Math.sin(t * 6) * .03); g.scale(s, s); g.fillStyle = '#fff'; g.strokeStyle = '#1b1d22'; g.lineWidth = 1.2 * u;
+    roundRect(g, -28 * u, -18 * u, 56 * u, 30 * u, 10 * u); g.fill(); g.stroke(); g.beginPath(); g.moveTo(-10 * u, 11 * u); g.lineTo(-18 * u, 24 * u); g.lineTo(-2 * u, 11 * u); g.fill(); g.stroke(); g.fillRect(-9.3 * u, 9 * u, 6.6 * u, 2.6 * u);
+    g.fillStyle = '#e8264f'; g.font = `900 ${15 * u}px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('哇！', 0, -3 * u); g.restore(); }],
+  ['箭頭指示', 3, ({ g, W, H, t }) => { const u = H / 100, s = easeBack(clamp(t / .4, 0, 1)); g.save(); g.translate(W / 2, H * .42 + Math.abs(Math.sin(t * 5)) * 8 * u); g.scale(s, s);
+    g.fillStyle = '#ff2d2d'; g.strokeStyle = '#fff'; g.lineWidth = 1.5 * u; g.lineJoin = 'round'; g.beginPath(); for (const [x, y] of [[-7, -22], [7, -22], [7, -2], [16, -2], [0, 18], [-16, -2], [-7, -2]]) g.lineTo(x * u, y * u); g.closePath(); g.fill(); g.stroke(); g.restore(); }],
+  ['星星閃爍', 4, ({ g, W, H, t }) => { const u = H / 100; for (let i = 0; i < 16; i++) { const p = (t * .8 + rnd(i)) % 1, s = Math.sin(p * Math.PI) * (3 + rnd(i + 2) * 5) * u; if (s <= .1) continue;
+    g.fillStyle = i % 3 ? '#fff59d' : '#ffffff'; g.save(); g.translate(W * (.15 + rnd(i + 5) * .7), H * (.15 + rnd(i + 8) * .7)); g.rotate(t + i); starPath(g, 0, 0, s, s * .35, 4); g.fill(); g.restore(); } }],
+  ['金幣掉落', 4, ({ g, W, H, t }) => { const u = H / 100; for (let i = 0; i < 24; i++) { const y = ((t * (.5 + rnd(i) * .5) + rnd(i + 3)) % 1.2) * H * 1.1 - 8 * u, x = W * (.08 + rnd(i + 7) * .84), sx = Math.cos(t * (3 + rnd(i) * 3) + i), r = 4 * u;
+    g.save(); g.translate(x, y); g.scale(Math.max(.08, Math.abs(sx)), 1); g.fillStyle = '#c98a00'; circ(g, .6 * u, 0, r); g.fillStyle = '#ffcf33'; circ(g, 0, 0, r); g.fillStyle = '#e6a800'; g.font = `900 ${4.6 * u}px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('$', 0, .3 * u); g.restore(); } }],
+  ['下雨雲朵', 4, ({ g, W, H, t }) => { const u = H / 100, cx = W / 2 + Math.sin(t) * 3 * u, cy = H * .32;
+    g.strokeStyle = '#4fa3ff'; g.lineWidth = .8 * u; g.lineCap = 'round'; for (let i = 0; i < 26; i++) { const x = cx + (rnd(i) - .5) * 40 * u, y = cy + 8 * u + ((t * 1.4 + rnd(i + 4)) % 1) * 45 * u; g.beginPath(); g.moveTo(x, y); g.lineTo(x - u, y + 4 * u); g.stroke(); }
+    g.fillStyle = '#e9edf2'; for (const [x, y, r] of [[-15, 3, 9], [-5, -4, 12], [9, -2, 11], [18, 4, 8], [0, 5, 10]]) circ(g, cx + x * u, cy + y * u, r * u); g.fillRect(cx - 15 * u, cy + 2 * u, 33 * u, 10 * u); }],
+  ['雪花飄落', 5, ({ g, W, H, t }) => { const u = H / 100; g.strokeStyle = '#fff'; g.lineCap = 'round'; for (let i = 0; i < 30; i++) { const z = .5 + rnd(i) * .5, x = W * rnd(i + 2) + Math.sin(t + i) * 4 * u, y = ((t * .12 * z + rnd(i + 5)) % 1) * H * 1.1 - 5 * u, s = 3.5 * u * z;
+    g.lineWidth = .45 * u * z; g.save(); g.translate(x, y); g.rotate(t * .5 + i); for (let k = 0; k < 6; k++) { g.rotate(Math.PI / 3); g.beginPath(); g.moveTo(0, 0); g.lineTo(0, s); g.moveTo(0, s * .6); g.lineTo(s * .25, s * .8); g.moveTo(0, s * .6); g.lineTo(-s * .25, s * .8); g.stroke(); } g.restore(); } }],
+  ['泡泡上升', 5, ({ g, W, H, t }) => { const u = H / 100; for (let i = 0; i < 22; i++) { const y = H * 1.1 - ((t * (.12 + rnd(i) * .12) + rnd(i + 3)) % 1) * H * 1.25, x = W * (.1 + rnd(i + 6) * .8) + Math.sin(t * 2 + i) * 2 * u, r = (2 + rnd(i + 9) * 5) * u;
+    g.fillStyle = 'rgba(175,218,255,.8)'; circ(g, x, y, r); g.strokeStyle = '#eaf6ff'; g.lineWidth = .35 * u; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.stroke(); g.fillStyle = '#fff'; circ(g, x - r * .35, y - r * .35, r * .22); } }],
+  ['音符跳動', 4, ({ g, W, H, t }) => { const u = H / 100, cols = ['#b06bff', '#ff4f7b', '#2d9cff', '#ffc400', '#ff8a00']; for (let i = 0; i < 5; i++) { const s = easeBack(clamp((t - i * .12) / .4, 0, 1)); if (s <= 0) continue;
+    g.save(); g.translate(W * (.25 + i * .125), H * .55 - Math.abs(Math.sin(t * 3 + i * .9)) * 14 * u); g.scale(s, s); g.rotate(Math.sin(t * 3 + i) * .15); g.fillStyle = cols[i];
+    g.beginPath(); g.ellipse(-2 * u, 6 * u, 4 * u, 3 * u, -.4, 0, Math.PI * 2); g.fill(); g.fillRect(1.2 * u, -12 * u, 1.4 * u, 18 * u);
+    if (i % 2) g.fillRect(1.2 * u, -12 * u, 7 * u, 2.2 * u); else { g.beginPath(); g.moveTo(2.6 * u, -12 * u); g.quadraticCurveTo(9 * u, -8 * u, 6 * u, -1 * u); g.lineTo(5 * u, -2 * u); g.quadraticCurveTo(6 * u, -7 * u, 2.6 * u, -8 * u); g.fill(); } g.restore(); } }],
+  ['打勾完成', 3, ({ g, W, H, t }) => { const u = H / 100, s = easeBack(clamp(t / .4, 0, 1)), k = ease((t - .35) / .5); g.save(); g.translate(W / 2, H / 2); g.scale(s, s); g.fillStyle = '#2d7dff'; circ(g, 0, 0, 22 * u);
+    if (k > 0) { const p = [[-10, 1], [-3, 8], [11, -8]], L1 = 9.9, L2 = 21.3, d = k * (L1 + L2); g.strokeStyle = '#fff'; g.lineWidth = 4.5 * u; g.lineCap = 'round'; g.lineJoin = 'round'; g.beginPath(); g.moveTo(p[0][0] * u, p[0][1] * u);
+      if (d <= L1) g.lineTo(lerp(p[0][0], p[1][0], d / L1) * u, lerp(p[0][1], p[1][1], d / L1) * u); else { g.lineTo(p[1][0] * u, p[1][1] * u); g.lineTo(lerp(p[1][0], p[2][0], (d - L1) / L2) * u, lerp(p[1][1], p[2][1], (d - L1) / L2) * u); } g.stroke(); } g.restore(); }],
+  ['驚嘆號警示', 3, ({ g, W, H, t }) => { const u = H / 100, s = easeBack(clamp(t / .4, 0, 1)); g.save(); g.translate(W / 2, H / 2); g.rotate(t > .5 && t < 1.3 ? Math.sin(t * 40) * .06 : 0); g.scale(s, s);
+    g.fillStyle = '#ffcc00'; g.strokeStyle = '#1b1d22'; g.lineWidth = 2.2 * u; g.lineJoin = 'round'; g.beginPath(); g.moveTo(0, -24 * u); g.lineTo(26 * u, 20 * u); g.lineTo(-26 * u, 20 * u); g.closePath(); g.fill(); g.stroke();
+    g.fillStyle = '#1b1d22'; roundRect(g, -2.6 * u, -11 * u, 5.2 * u, 19 * u, 2.6 * u); g.fill(); circ(g, 0, 13.5 * u, 3 * u); g.restore(); }],
+];
+const GSCR = {};
+GS.forEach(([name, dur, fn], i) => { GSCR['gs' + i] = { name, dur, fn }; Media.set('gs' + i, { id: 'gs' + i, name, kind: 'gen', gen: 'gs' + i, dur: sec(dur), builtin: true, cat: 'green' }); });
+
+// ---------- 字幕樣式：一般文字 6 種、3D 立體文字動畫 6 種 ----------
+const D3_ANIMS = { flip: '立體翻轉', spin: 'Y 軸旋轉', float: '立體浮動', pop: '彈跳放大', rise: '逐字升起', zoom: '透視推進' };
+const TEXT_PRESETS = [
+  { id: 'tp0', name: '一般字幕', text: { style: 'subtitle', size: 5.2, color: '#ffffff', y: 88, bg: true, bold: false } },
+  { id: 'tp1', name: '大標題', text: { style: 'title', size: 9, color: '#ffffff', y: 50, bg: false, bold: true }, anim: { in: 'fade', out: 'fade', inDur: .6, outDur: .6 } },
+  { id: 'tp2', name: '描邊粗字', text: { style: 'title', size: 7, color: '#ffffff', y: 80, bg: false, bold: true } },
+  { id: 'tp3', name: '綜藝黃字', text: { style: 'title', size: 8, color: '#ffd400', y: 78, bg: false, bold: true }, anim: { in: 'pop', out: 'shrink', inDur: .5, outDur: .4 } },
+  { id: 'tp4', name: '上方標註', text: { style: 'subtitle', size: 4.2, color: '#f0a83a', y: 12, bg: false, bold: true }, anim: { in: 'fromLeft', out: 'toLeft', inDur: .5, outDur: .4 } },
+  { id: 'tp5', name: '打字機字幕', text: { style: 'subtitle', size: 5.2, color: '#ffffff', y: 88, bg: true, bold: false }, anim: { in: 'typewriter', out: 'fade', inDur: 1.2, outDur: .5 } },
+  { id: 'td0', name: '立體翻轉', d3: { anim: 'flip', face: ['#fff6c2', '#f3b33d'], side: '#6b3f0a', depth: 20 } },
+  { id: 'td1', name: 'Y 軸旋轉', d3: { anim: 'spin', face: ['#e6f6ff', '#4fb3ff'], side: '#0d3a66', depth: 20 } },
+  { id: 'td2', name: '立體浮動', d3: { anim: 'float', face: ['#ffe3ef', '#ff5c9a'], side: '#7a1640', depth: 20 } },
+  { id: 'td3', name: '彈跳放大', d3: { anim: 'pop', face: ['#fff1c9', '#ff7a1a'], side: '#6e2600', depth: 22 } },
+  { id: 'td4', name: '逐字升起', d3: { anim: 'rise', face: ['#e8fff6', '#2fd3a0'], side: '#0b5a43', depth: 20 } },
+  { id: 'td5', name: '透視推進', d3: { anim: 'zoom', face: ['#f1e6ff', '#9b6bff'], side: '#35136e', depth: 22 } },
+];
+const TPRE = Object.fromEntries(TEXT_PRESETS.map(p => [p.id, p]));
+const TEXT3D_BASE = { style: 'title', size: 15, color: '#ffffff', x: 50, y: 50, bg: false, bold: true };
+// 3D 動畫：回傳整句的變形（左右／上下縮放模擬旋轉、斜切模擬透視）與擠出方向；rise 是逐字
+function anim3D(d3, lt, size) {
+  const r = { sx: 1, sy: 1, rot: 0, skew: 0, dy: 0, scale: 1, ex: .45, ey: .9, depthK: 1, perChar: null };
+  switch (d3.anim) {
+    case 'flip': { const k = clamp(lt / .9, 0, 1), a = (1 - easeBack(k)) * Math.PI / 2; r.sy = Math.max(.02, Math.abs(Math.cos(a))); r.ey = .9 - Math.sin(a) * 2; r.depthK = .4 + .6 * k; break; }
+    case 'spin': { const a = lt < .8 ? (1 - ease(lt / .8)) * Math.PI / 2 : Math.sin((lt - .8) * 1.4) * .5; r.sx = Math.max(.02, Math.cos(a)); r.ex = .45 + Math.sin(a) * 1.4; break; }
+    case 'float': r.dy = Math.sin(lt * 2.2) * size * .12; r.rot = Math.sin(lt * 1.4) * .05; r.ex = .45 + Math.sin(lt * 1.4) * .5; r.ey = .9 + Math.cos(lt * 2.2) * .2; break;
+    case 'pop': { const k = clamp(lt / .6, 0, 1); r.scale = Math.max(.01, easeBack(k)) * (k >= 1 ? 1 + Math.sin((lt - .6) * 5) * .03 : 1); r.depthK = ease(k); break; }
+    case 'rise': r.perChar = i => { const k = clamp((lt - i * .07) / .5, 0, 1); return { dy: (1 - easeBack(k)) * size * 1.3, alpha: clamp(k * 2, 0, 1), depthK: k }; }; break;
+    case 'zoom': { const k = clamp(lt / 1.2, 0, 1), e = ease(k); r.scale = lerp(.15, 1, e); r.skew = -(1 - e) * .6 + (k >= 1 ? Math.sin((lt - 1.2) * 1.5) * .06 : 0); r.depthK = e * 1.3; r.ex = .45 - r.skew; break; }
+  }
+  return r;
+}
+// 畫一段立體字：先由後往前疊出側面（越後面越暗），再畫漸層正面
+function glyph3D(g, s, x, y, size, d3, ex, ey, depthK) {
+  const depth = size * (d3.depth ?? 14) / 100 * depthK, n = Math.min(36, Math.max(0, Math.round(depth / Math.max(1, size / 60))));
+  const len = Math.hypot(ex, ey) || 1, ux = ex / len, uy = ey / len, side = d3.side || '#333333', dark = mixHex(side, '#000000', .55);
+  if (n > 0) {
+    g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = size * .25; g.shadowOffsetY = size * .08; g.fillStyle = dark; g.fillText(s, x + ux * depth, y + uy * depth); g.restore();
+    for (let i = n; i >= 1; i--) { g.fillStyle = mixHex(dark, side, 1 - i / n); g.fillText(s, x + ux * depth * i / n, y + uy * depth * i / n); }
+  }
+  const f = d3.face || ['#ffffff', '#cccccc'], gr = g.createLinearGradient(0, y - size * .5, 0, y + size * .5); gr.addColorStop(0, f[0]); gr.addColorStop(1, f[1]);
+  g.lineJoin = 'round'; g.lineWidth = Math.max(1, size * .04); g.strokeStyle = side; g.strokeText(s, x, y); g.fillStyle = gr; g.fillText(s, x, y);
+}
+
+// ---------- 配樂 110 首：WebAudio 離線合成（樂器、和弦、旋律、鼓組、天氣音效都是程式算出來的） ----------
+const midiF = m => 440 * Math.pow(2, (m - 69) / 12);
+function mulberry(seed) { let a = seed >>> 0; return () => { a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
+const SCALES = { major: [0, 2, 4, 5, 7, 9, 11], minor: [0, 2, 3, 5, 7, 8, 10], pent: [0, 2, 4, 7, 9], mpent: [0, 3, 5, 7, 10], blues: [0, 3, 5, 6, 7, 10] };
+const PROGS = { major: [[0, 4, 5, 3], [0, 3, 4, 0], [0, 5, 3, 4], [0, 3, 0, 4], [5, 3, 0, 4], [0, 4, 3, 4]], minor: [[0, 5, 2, 6], [0, 3, 4, 0], [0, 6, 5, 4], [0, 2, 5, 4], [0, 5, 3, 4], [5, 6, 0, 0]] };
+const PATS = {
+  fast: [[1, 1, 1, 1], [.5, .5, 1, .5, .5, 1], [1, .5, .5, 1, 1], [.5, .5, .5, .5, 2], [1.5, .5, 1, 1], [1, 1, 2]],
+  mid: [[1, 1, 2], [2, 1, 1], [1.5, .5, 2], [1, 1, 1, 1], [1, .5, .5, 2]],
+  slow: [[2, 2], [1, 1, 2], [3, 1], [1.5, .5, 2], [4], [2, 1, 1]],
+  waltz: [[1, 1, 1], [2, 1], [1.5, .5, 1], [3]],
+};
+// 音色：parts = [波形, 頻率倍數, 音量, 微調(cent), 這個泛音自己的衰減秒數]
+const VOICE = {
+  piano: { parts: [['triangle', 1, 1], ['sine', 2, .35], ['sine', 3, .1]], a: .004, dec: 1.3, s: 0, r: .4, lp: 3500, gain: .5 },
+  epiano: { parts: [['sine', 1, 1], ['sine', 2, .3, 0, .5], ['sine', 7, .08, 0, .15]], a: .004, dec: 1.8, s: .05, r: .5, gain: .5 },
+  bell: { parts: [['sine', 1, 1, 0, 1.4], ['sine', 2.4, .35, 0, .5], ['sine', 5.95, .12, 0, .2]], a: .002, dec: 1.6, s: 0, r: .6, gain: .4 },
+  glock: { parts: [['sine', 1, 1, 0, 1], ['sine', 2.76, .35, 0, .3], ['sine', 5.4, .15, 0, .1]], a: .001, dec: 1.2, s: 0, r: .5, gain: .32 },
+  musicbox: { parts: [['sine', 1, 1, 0, .9], ['sine', 3, .2, 0, .25], ['sine', 4.2, .1, 0, .15]], a: .001, dec: 1, s: 0, r: .4, gain: .35 },
+  marimba: { parts: [['sine', 1, 1, 0, .45], ['sine', 4, .3, 0, .08], ['sine', 10, .06, 0, .03]], a: .002, dec: .5, s: 0, r: .2, gain: .55 },
+  steeldrum: { parts: [['sine', 1, 1, 0, .8], ['sine', 2, .5, 0, .4], ['sine', 3, .25, 0, .25], ['sine', 4.1, .12, 0, .15]], a: .003, dec: .9, s: 0, r: .3, gain: .38 },
+  whistle: { parts: [['sine', 1, 1]], a: .03, r: .08, vib: [6, .008], gain: .3 },
+  strings: { parts: [['sawtooth', 1, .5, -8], ['sawtooth', 1, .5, 8]], a: .35, r: .7, lp: 2400, vib: [5.5, .004], gain: .17 },
+  violin: { parts: [['sawtooth', 1, 1]], a: .07, r: .25, lp: 3600, q: 1.2, vib: [6, .007], vibD: .25, gain: .24 },
+  cello: { parts: [['sawtooth', 1, 1]], a: .09, r: .3, lp: 1700, q: 1.1, vib: [5, .006], vibD: .3, gain: .3 },
+  pad: { parts: [['sawtooth', 1, .35, -12], ['sawtooth', 1, .35, 12], ['triangle', .5, .4]], a: .6, r: 1.2, lp: 1300, gain: .13 },
+  softpad: { parts: [['triangle', 1, .7], ['sine', 2, .2]], a: .5, r: 1.1, lp: 1800, gain: .16 },
+  bass: { parts: [['sawtooth', 1, .7], ['square', .5, .3]], a: .005, dec: .5, s: .5, r: .08, lp: 480, q: 2, gain: .42, wet: 0 },
+  bassSoft: { parts: [['triangle', 1, 1], ['sine', 2, .2]], a: .01, dec: .8, s: .4, r: .1, gain: .5, wet: 0 },
+  chipTri: { parts: [['triangle', 1, 1]], a: .002, r: .02, gain: .45, wet: 0 },
+  chip: { parts: [['pulse', 1, 1]], a: .002, r: .03, gain: .16 },
+  lead: { parts: [['sawtooth', 1, .5, -7], ['square', 1, .35, 7]], a: .01, dec: .3, s: .7, r: .15, lp: 1600, lpEnv: 4200, lpT: .08, q: 3, gain: .16 },
+  flute: { parts: [['sine', 1, 1], ['triangle', 2, .07]], a: .06, r: .15, vib: [5, .005], vibD: .25, breath: .08, gain: .38 },
+  dizi: { parts: [['sine', 1, 1], ['sine', 2, .22], ['sine', 3, .08]], a: .04, r: .12, vib: [5.5, .009], vibD: .2, breath: .16, gain: .34 },
+  clarinet: { parts: [['square', 1, .6], ['sine', 1, .5]], a: .04, r: .12, lp: 1900, vib: [5, .003], gain: .22 },
+  sax: { parts: [['sawtooth', 1, 1]], a: .03, dec: .4, s: .8, r: .12, lp: 1300, lpEnv: 2800, lpT: .07, q: 1.4, vib: [5.5, .006], vibD: .2, gain: .22 },
+  trumpet: { parts: [['sawtooth', 1, 1]], a: .02, dec: .3, s: .8, r: .1, lp: 1000, lpEnv: 3800, lpT: .05, vib: [6, .004], vibD: .35, gain: .2 },
+  brass: { parts: [['sawtooth', 1, .6, -5], ['sawtooth', 1, .6, 5]], a: .05, dec: .4, s: .85, r: .25, lp: 900, lpEnv: 2600, lpT: .12, gain: .17 },
+  horn: { parts: [['sawtooth', 1, .7], ['triangle', 1, .5]], a: .08, dec: .5, s: .9, r: .3, lp: 700, lpEnv: 1500, lpT: .15, gain: .26 },
+  organ: { parts: [['sine', 1, 1], ['sine', 2, .6], ['sine', 3, .4], ['sine', 4, .25], ['sine', 8, .1]], a: .01, r: .1, gain: .13 },
+  accordion: { parts: [['sawtooth', 1, .5, -14], ['sawtooth', 1, .5, 14], ['square', 2, .12]], a: .03, r: .08, lp: 2300, gain: .14 },
+  harmonica: { parts: [['square', 1, .5], ['sawtooth', 1, .4]], a: .05, r: .1, ft: 'bandpass', lp: 1500, q: .7, vib: [6, .006], vibD: .3, gain: .42 },
+  erhu: { parts: [['sawtooth', 1, 1]], a: .08, r: .2, ft: 'bandpass', lp: 1300, q: .9, vib: [6, .012], vibD: .15, gain: .5 },
+};
+// 撥弦樂器（Karplus-Strong 撥弦合成）：bright 越大越亮（0.5～0.95）
+const PLUCK = {
+  guitar: { id: 'g', bright: .55, damp: .996, len: 2.2, gain: .55, lp: 4000 },
+  uke: { id: 'u', bright: .75, damp: .992, len: 1.4, gain: .5 },
+  harp: { id: 'h', bright: .5, damp: .998, len: 3, gain: .55 },
+  guzheng: { id: 'z', bright: .7, damp: .997, len: 2.8, gain: .55, bend: true },
+  pipa: { id: 'p', bright: .8, damp: .994, len: 1.2, gain: .5 },
+  bassg: { id: 'b', bright: .5, damp: .997, len: 1.6, gain: .75, lp: 1200, wet: 0 },
+};
+class Synth {
+  constructor(ac, rng, D) {
+    this.ac = ac; this.rng = rng; this.D = D; this.sr = ac.sampleRate; this.ks = new Map();
+    const comp = ac.createDynamicsCompressor(); comp.threshold.value = -16; comp.knee.value = 12; comp.ratio.value = 3; comp.attack.value = .005; comp.release.value = .25; comp.connect(ac.destination);
+    this.bus = ac.createGain(); this.bus.connect(comp);
+    this.revIn = ac.createGain(); this.revIn.gain.value = .22; const cv = ac.createConvolver(); cv.buffer = this.impulse(2.4); this.revIn.connect(cv); cv.connect(comp);
+    this.noise = this.noiseBuf(4);
+  }
+  impulse(s) { const n = Math.round(this.sr * s), b = this.ac.createBuffer(2, n, this.sr); for (let c = 0; c < 2; c++) { const d = b.getChannelData(c); for (let i = 0; i < n; i++) d[i] = (this.rng() * 2 - 1) * Math.pow(1 - i / n, 3); } return b; }
+  noiseBuf(s) { const n = Math.round(this.sr * s), b = this.ac.createBuffer(1, n, this.sr), d = b.getChannelData(0); for (let i = 0; i < n; i++) d[i] = this.rng() * 2 - 1; return b; }
+  pulseWave() { if (!this.pw) { const n = 48, re = new Float32Array(n), im = new Float32Array(n); for (let i = 1; i < n; i++) re[i] = 2 / (i * Math.PI) * Math.sin(i * Math.PI * .25); this.pw = this.ac.createPeriodicWave(re, im); } return this.pw; }
+  // 左右聲道位置相同的音共用一個 panner（節點越少算得越快）
+  outChain(pan, wet) {
+    const pv = Math.round(clamp(pan || 0, -1, 1) * 10) / 10, key = pv + (wet === 0 ? 'd' : 'w');
+    this.pans = this.pans || new Map(); let p = this.pans.get(key);
+    if (!p) { p = this.ac.createStereoPanner(); p.pan.value = pv; p.connect(this.bus); if (wet !== 0) p.connect(this.revIn); this.pans.set(key, p); }
+    return p;
+  }
+  // 每個音先不接上混音器：算繪途中每隔一小段才接上「快要開始」的音、拔掉「已經結束」的音。
+  // 不這樣做的話，幾千個還沒開始或早已結束的節點每一格都會被運算，一首歌要算好幾秒。
+  track(node, dest, start, end) { (this.pending = this.pending || []).push({ node, dest, start, end }); }
+  step(now, next) {
+    this.live = (this.live || []).filter(x => { if (x.end > now) return true; try { x.node.disconnect(); } catch { } return false; });
+    this.pending = (this.pending || []).filter(x => { if (x.start < next) { x.node.connect(x.dest); this.live.push(x); return false; } return true; });
+  }
+  filt(type, f, q = .7) { const x = this.ac.createBiquadFilter(); x.type = type; x.frequency.value = f; x.Q.value = q; return x; }
+  loopNoise(t0, t1) { const s = this.ac.createBufferSource(); s.buffer = this.noise; s.loop = true; s.start(t0, this.rng() * 3); s.stop(t1); return s; }
+  curve(n, lo, hi, smooth = .25) { const a = new Float32Array(n); let v = this.rng(); for (let i = 0; i < n; i++) { v += (this.rng() - v) * smooth; a[i] = lo + (hi - lo) * v; } return a; }
+  note(v, t, m, d, vel, o = {}) {
+    if (t >= this.D) return;
+    const f = midiF(m), P = PLUCK[v];
+    if (P) { if (v === 'pipa' && d > .35) { for (let x = 0; x < d - .05; x += .075) this.pluck(t + x, f, .1, vel * (x ? .6 : 1), P, o.pan); return; } this.pluck(t, f, d, vel, P, o.pan); return; }
+    if (VOICE[v]) this.tone(t, d, f, vel, VOICE[v], o.pan || 0, o.slideFrom);
+  }
+  tone(t, d, f, vel, V, pan, slideFrom) {
+    const ac = this.ac, a = V.a ?? .01, r = V.r ?? .3, end = t + d + r * 2.5 + .05, pk = vel * (V.gain ?? .3);
+    const g = ac.createGain(); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(pk, t + a);
+    if (V.dec) g.gain.setTargetAtTime(pk * (V.s ?? 0), t + a, V.dec / 3);
+    g.gain.setTargetAtTime(0, Math.max(t + a, t + d), r / 3);
+    this.track(g, this.outChain(pan, V.wet), t, end);
+    let head = g;
+    if (V.lp) { const fl = this.filt(V.ft || 'lowpass', V.lp, V.q ?? .7); if (V.lpEnv) { fl.frequency.setValueAtTime(V.lp, t); fl.frequency.linearRampToValueAtTime(V.lpEnv, t + (V.lpT || .1)); fl.frequency.setTargetAtTime(V.lp * 1.3, t + (V.lpT || .1), .25); } fl.connect(g); head = fl; }
+    let vg = null;
+    if (V.vib) { const lfo = ac.createOscillator(); lfo.frequency.value = V.vib[0]; vg = ac.createGain(); vg.gain.setValueAtTime(0, t); vg.gain.linearRampToValueAtTime(f * V.vib[1], t + (V.vibD ?? .3)); lfo.connect(vg); lfo.start(t); lfo.stop(end); }
+    for (const [type, ratio, amp, det, pdec] of V.parts) {
+      const o = ac.createOscillator(); if (type === 'pulse') o.setPeriodicWave(this.pulseWave()); else o.type = type;
+      if (slideFrom) { o.frequency.setValueAtTime(slideFrom * ratio, t); o.frequency.exponentialRampToValueAtTime(f * ratio, t + .09); } else o.frequency.setValueAtTime(f * ratio, t);
+      if (det) o.detune.value = det; if (vg) vg.connect(o.frequency);
+      const og = ac.createGain(); og.gain.setValueAtTime(amp, t); if (pdec) og.gain.setTargetAtTime(0, t, pdec / 3);
+      o.connect(og); og.connect(head); o.start(t); o.stop(end);
+    }
+    if (V.breath) { const s = this.loopNoise(t, end), bp = this.filt('bandpass', f * 2, 2), bg = ac.createGain(); bg.gain.value = V.breath; s.connect(bp); bp.connect(bg); bg.connect(head); }
+  }
+  pluck(t, f, d, vel, P, pan = 0) {
+    const key = P.id + Math.round(f);
+    let b = this.ks.get(key);
+    if (!b) {
+      const sr = this.sr, len = Math.round(sr * P.len), N = Math.max(2, Math.round(sr / f)), buf = new Float32Array(N); b = this.ac.createBuffer(1, len, sr); const out = b.getChannelData(0);
+      let last = 0, mean = 0; for (let i = 0; i < N; i++) { last += (this.rng() * 2 - 1 - last) * (.3 + P.bright * .7); buf[i] = last; mean += last; } mean /= N; for (let i = 0; i < N; i++) buf[i] -= mean;
+      for (let i = 0; i < len; i++) { const j = i % N, y = buf[j]; out[i] = y; buf[j] = P.damp * (y * P.bright + buf[(j + 1) % N] * (1 - P.bright)); }
+      this.ks.set(key, b);
+    }
+    const s = this.ac.createBufferSource(); s.buffer = b;
+    if (P.bend) { s.playbackRate.setValueAtTime(.97, t); s.playbackRate.linearRampToValueAtTime(1, t + .12); }
+    const g = this.ac.createGain(), pk = vel * P.gain, rel = t + Math.max(.06, d); g.gain.setValueAtTime(pk, t); g.gain.setTargetAtTime(0, rel, .07);
+    let head = s; if (P.lp) { const fl = this.filt('lowpass', P.lp); s.connect(fl); head = fl; }
+    head.connect(g);
+    const stop = Math.min(t + P.len, rel + .5); s.start(t); s.stop(stop); this.track(g, this.outChain(pan, P.wet), t, stop);
+  }
+  // 打擊樂：濾波雜訊與滑音
+  nz(t, dur, vel, type, f, q = .7, decay = dur, pan = 0, wet = 0) { if (t >= this.D) return; const s = this.loopNoise(t, t + dur + .02), fl = this.filt(type, f, q), g = this.ac.createGain(); g.gain.setValueAtTime(vel, t); g.gain.setTargetAtTime(0, t + .001, Math.max(.003, decay / 4)); s.connect(fl); fl.connect(g); this.track(g, this.outChain(pan, wet), t, t + dur + .05); }
+  sweep(t, f0, f1, st, decay, vel, type = 'sine', pan = 0, wet = 0) { if (t >= this.D) return; const o = this.ac.createOscillator(); o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + st); const g = this.ac.createGain(); g.gain.setValueAtTime(vel, t); g.gain.setTargetAtTime(0, t + .002, decay / 4); o.connect(g); o.start(t); o.stop(t + decay * 1.6 + .05); this.track(g, this.outChain(pan, wet), t, t + decay * 1.6 + .1); }
+  kick(t, v = 1) { this.sweep(t, 150, 42, .12, .45, v * .9); this.nz(t, .02, v * .15, 'lowpass', 3000); }
+  snare(t, v = 1) { this.nz(t, .25, v * .45, 'highpass', 1500, .7, .18, 0, 1); this.sweep(t, 220, 160, .05, .12, v * .3, 'triangle'); }
+  hat(t, v = 1, open = false) { this.nz(t, open ? .35 : .08, v * .22, 'highpass', 7500, .7, open ? .3 : .05, .25); }
+  clap(t, v = 1) { [0, .012, .024].forEach((dt, i) => this.nz(t + dt, .2, v * .3, 'bandpass', 1400, 1.2, i === 2 ? .15 : .02, 0, 1)); }
+  tom(t, f, v = 1) { this.sweep(t, f, f * .65, .2, .45, v * .6, 'sine', 0, 1); }
+  crash(t, v = 1) { this.nz(t, 2.2, v * .25, 'highpass', 4500, .5, 1.8, 0, 1); }
+  ride(t, v = 1) { this.nz(t, .5, v * .12, 'bandpass', 8000, 1.5, .4, .2); }
+  shaker(t, v = 1) { this.nz(t, .06, v * .12, 'highpass', 5000, .8, .05, -.2); }
+  kane(t, v = 1) { this.sweep(t, 2600, 2550, .05, .15, v * .12, 'sine', .3, 1); this.sweep(t, 3700, 3650, .05, .1, v * .08, 'sine', .3, 1); }
+  djembe(t, k, v = 1, pan = 0) { if (k === 0) this.sweep(t, 110, 60, .08, .35, v * .8, 'sine', pan); else if (k === 1) { this.sweep(t, 260, 220, .03, .18, v * .5, 'sine', pan); this.nz(t, .08, v * .15, 'bandpass', 900, 1.5, .06, pan); } else { this.nz(t, .1, v * .45, 'bandpass', 2600, 1.2, .07, pan, 1); this.sweep(t, 400, 330, .02, .08, v * .2, 'triangle', pan); } }
+  taiko(t, v = 1) { this.sweep(t, 80, 48, .25, 1.4, v, 'sine', 0, 1); this.nz(t, .3, v * .4, 'lowpass', 500, .7, .25, 0, 1); }
+}
+// ---------- 天氣音效 ----------
+function wxRain(S, amt, o = {}) {
+  const D = S.D, shape = x => o.shape === 'out' ? clamp((.85 - x) / .35, 0, 1) : o.shape === 'in' ? .35 + .65 * clamp(x / .6, 0, 1) : 1;
+  for (const pan of [-.6, .6]) {
+    const s = S.loopNoise(0, D), hp = S.filt('highpass', 450), lp = S.filt('lowpass', o.muffle ? 1600 : 7000), g = S.ac.createGain(), cv = S.curve(60, .8, 1.15);
+    for (let i = 0; i < 60; i++) cv[i] *= amt * .4 * shape(i / 59);
+    g.gain.setValueCurveAtTime(cv, 0, D); s.connect(hp); hp.connect(lp); lp.connect(g); g.connect(S.outChain(pan, 0));
+  }
+  const n = Math.round(D * amt * (o.drops ?? 22));
+  for (let i = 0; i < n; i++) { const t = S.rng() * D; if (S.rng() > shape(t / D)) continue; S.nz(t, .04, amt * (.12 + S.rng() * .3) * (o.dropV ?? 1), 'bandpass', 1500 + S.rng() * 4500, 2.5, .025, S.rng() * 1.6 - .8); }
+}
+function wxWind(S, amt, o = {}) {
+  const D = S.D;
+  for (const pan of [-.55, .55]) {
+    const s = S.loopNoise(0, D), bp = S.filt('bandpass', 500, o.q ?? .7), g = S.ac.createGain(), cv = S.curve(50, o.gust ? .15 : .55, 1, o.gust ? .35 : .15);
+    bp.frequency.setValueCurveAtTime(S.curve(50, 220, o.hi ?? 900, .2), 0, D);
+    for (let i = 0; i < 50; i++) cv[i] *= amt * 1.3;
+    g.gain.setValueCurveAtTime(cv, 0, D); s.connect(bp); bp.connect(g); g.connect(S.outChain(pan, 0));
+  }
+  if (o.whistle) { const s = S.loopNoise(0, D), bp = S.filt('bandpass', 1000, 18), g = S.ac.createGain(); bp.frequency.setValueCurveAtTime(S.curve(40, 650, 1500, .15), 0, D); g.gain.setValueCurveAtTime(S.curve(40, 0, amt * 2.2, .2), 0, D); s.connect(bp); bp.connect(g); g.connect(S.outChain(0, 1)); }
+}
+function wxThunder(S, t, near) {
+  if (t >= S.D - 1) return;
+  const len = Math.min(S.D - t, 4 + near * 3), n = 90, cv = new Float32Array(n), atk = near > .6 ? .06 : .5;
+  let w = .7; for (let i = 0; i < n; i++) { const x = i / (n - 1) * len; w += (S.rng() - w) * .3; cv[i] = (.4 + near) * Math.min(1, x / atk) * Math.exp(-x * (1.1 - near * .4)) * (.5 + w); }
+  cv[n - 1] = 0;
+  const s = S.loopNoise(t, t + len), l1 = S.filt('lowpass', 150 + near * 900), l2 = S.filt('lowpass', 200 + near * 1100), g = S.ac.createGain();
+  g.gain.setValueAtTime(0, 0); g.gain.setValueCurveAtTime(cv, t, len); s.connect(l1); l1.connect(l2); l2.connect(g); g.connect(S.outChain((S.rng() - .5) * .6, 1));
+  S.sweep(t, 60, 32, 1.2, 2.5 + near * 2, .5 + near * .4);
+  if (near > .6) { S.nz(t, .3, near * .9, 'highpass', 1800, .7, .18, 0, 1); S.nz(t + .02, .5, near * .6, 'bandpass', 700, .8, .35, 0, 1); }
+}
+function wxOcean(S, amt) {
+  const D = S.D, n = 240, cv = new Float32Array(n), per = 6.5 + S.rng() * 2.5;
+  for (let i = 0; i < n; i++) { const ph = (i / (n - 1) * D / per) % 1; cv[i] = amt * (.12 + .88 * Math.pow(ph < .72 ? Math.sin(Math.PI * Math.min(1, ph * 1.4)) : 0, 2)); }
+  for (const [type, f, k, pan] of [['lowpass', 700, 1, -.3], ['highpass', 2200, .45, .3]]) { const s = S.loopNoise(0, D), fl = S.filt(type, f), g = S.ac.createGain(); g.gain.setValueCurveAtTime(cv.map(v => v * k), 0, D); s.connect(fl); fl.connect(g); g.connect(S.outChain(pan, 0)); }
+}
+function wxDrips(S, amt) { for (let i = 0, n = Math.round(S.D * amt * 1.4); i < n; i++) { const r = S.rng(); S.sweep(S.rng() * S.D, 600 + r * 500, 1500 + r * 1800, .05, .14, amt * (.25 + S.rng() * .3), 'sine', S.rng() * 1.4 - .7, 1); } }
+function wxHail(S, amt) { for (let i = 0, n = Math.round(S.D * 35 * amt); i < n; i++) { const t = S.rng() * S.D, pan = S.rng() * 1.6 - .8; S.nz(t, .012, amt * (.2 + S.rng() * .45), 'highpass', 3000, .7, .01, pan); if (i % 4 === 0) S.sweep(t, 3500 + S.rng() * 2000, 3000, .02, .05, .08, 'sine', pan); } }
+function wxCrickets(S) { for (let c = 0; c < 3; c++) { const f = 4200 + c * 350, pan = [-.6, .1, .7][c]; let t = S.rng(); while (t < S.D - .5) { for (let k = 0; k < 3; k++) S.sweep(t + k * .06, f, f * .98, .03, .045, .07, 'sine', pan, 1); t += .55 + S.rng() * .7; } } }
+function wxBirds(S, amt, from = 0) { for (let i = 0, n = Math.round(S.D * (1 - from) * amt * .5); i < n; i++) { const t = S.D * from + S.rng() * (S.D * (1 - from) - 1.5), r = S.rng(), pan = S.rng() * 1.4 - .7; for (let k = 0, m = 2 + Math.floor(S.rng() * 3); k < m; k++) S.sweep(t + k * .14, 2300 + r * 900, 3900 + r * 1500, .07, .1, .12, 'sine', pan, 1); } }
+const WEATHER = [
+  ['小雨', S => { wxRain(S, .35); wxDrips(S, .25); }],
+  ['大雨', S => wxRain(S, 1)],
+  ['雷雨', S => { wxRain(S, .8); [3, 13, 22].forEach((t, i) => wxThunder(S, t, [.5, .8, .4][i])); }],
+  ['遠方雷聲', S => { wxRain(S, .2); [2, 11, 20].forEach(t => wxThunder(S, t, .2)); }],
+  ['近距離雷擊', S => { wxRain(S, .5); [3, 16].forEach(t => wxThunder(S, t, 1)); }],
+  ['毛毛雨', S => wxRain(S, .18, { drops: 10 })],
+  ['雨打屋簷', S => { wxRain(S, .4); wxDrips(S, 1); }],
+  ['雨打窗戶', S => wxRain(S, .55, { muffle: true, drops: 30, dropV: 1.4 })],
+  ['微風', S => wxWind(S, .3)],
+  ['強風', S => wxWind(S, .8, { gust: true, hi: 1400 })],
+  ['暴風雪', S => wxWind(S, 1, { gust: true, hi: 1600, whistle: true })],
+  ['颱風', S => { wxWind(S, 1, { gust: true, hi: 1500 }); wxRain(S, 1); }],
+  ['山谷風聲', S => wxWind(S, .5, { whistle: true, q: 1.5 })],
+  ['海邊風浪', S => { wxOcean(S, .9); wxWind(S, .3); }],
+  ['冰雹', S => { wxRain(S, .4); wxHail(S, 1); }],
+  ['雷陣雨轉晴', S => { wxRain(S, .8, { shape: 'out' }); wxThunder(S, 3, .6); wxBirds(S, .8, .65); }],
+  ['夜雨蟲鳴', S => { wxRain(S, .25); wxCrickets(S); }],
+  ['午後雷陣雨', S => { wxRain(S, .9, { shape: 'in' }); [10, 19, 25].forEach((t, i) => wxThunder(S, t, [.4, .7, .9][i])); }],
+  ['狂風暴雨', S => { wxRain(S, 1); wxWind(S, .8, { gust: true }); [6, 18].forEach(t => wxThunder(S, t, .8)); }],
+  ['雨後滴水', S => { wxDrips(S, .7); wxBirds(S, .6, 0); }],
+];
+// 樂器 30：[名稱, 主奏音色, 和弦調式, 旋律音階, 速度, 八度, 編曲風格]
+const INST = [
+  ['鋼琴', 'piano', 'major', 'major', 92, 0, 'solo'], ['電鋼琴', 'epiano', 'major', 'major', 86, 0, 'solo'], ['吉他', 'guitar', 'major', 'major', 100, -1, 'strum'],
+  ['烏克麗麗', 'uke', 'major', 'major', 120, 0, 'strum'], ['豎琴', 'harp', 'major', 'major', 80, 0, 'arp'], ['小提琴', 'violin', 'minor', 'minor', 84, 0, 'solo'],
+  ['大提琴', 'cello', 'minor', 'minor', 70, -1, 'solo'], ['長笛', 'flute', 'major', 'major', 96, 1, 'solo'], ['單簧管', 'clarinet', 'minor', 'minor', 92, 0, 'solo'],
+  ['薩克斯風', 'sax', 'minor', 'blues', 96, 0, 'jazzy'], ['小號', 'trumpet', 'major', 'major', 108, 0, 'solo'], ['法國號', 'horn', 'major', 'major', 76, -1, 'solo'],
+  ['管風琴', 'organ', 'major', 'major', 72, 0, 'chorale'], ['手風琴', 'accordion', 'major', 'major', 116, 0, 'waltz'], ['口琴', 'harmonica', 'major', 'major', 100, 0, 'strum'],
+  ['鐘琴', 'glock', 'major', 'major', 110, 1, 'solo'], ['木琴', 'marimba', 'major', 'pent', 116, 0, 'solo'], ['音樂盒', 'musicbox', 'major', 'major', 84, 1, 'box'],
+  ['鋼鼓', 'steeldrum', 'major', 'major', 112, 0, 'island'], ['古箏', 'guzheng', 'major', 'pent', 80, 0, 'chinese'], ['二胡', 'erhu', 'minor', 'mpent', 66, 0, 'chinese'],
+  ['竹笛', 'dizi', 'major', 'pent', 92, 1, 'chinese'], ['琵琶', 'pipa', 'minor', 'mpent', 100, 0, 'chinese'], ['合成器主音', 'lead', 'minor', 'minor', 120, 0, 'synth'],
+  ['8-bit 電玩', 'chip', 'major', 'major', 140, 0, 'chip'], ['電貝斯', 'bassg', 'minor', 'mpent', 100, -2, 'funk'], ['爵士鼓', 'drums', 'major', 'major', 120, 0, 'jazzdrums'],
+  ['非洲鼓', 'djembe', 'minor', 'mpent', 104, 0, 'djembe'], ['太鼓', 'taiko', 'minor', 'mpent', 90, 0, 'taiko'], ['弦樂合奏', 'strings', 'major', 'major', 72, 0, 'ensemble'],
+];
+const MUSIC_CATS = [['happy', '快樂'], ['epic', '激勵'], ['sad', '悲傷'], ['weather', '天氣'], ['inst', '樂器']];
+const MUSIC_NAMES = {
+  happy: '陽光早晨 快樂野餐 週末出遊 跳跳糖 彩虹氣球 輕快步伐 微笑時光 夏日海灘 生日派對 小狗散步 甜甜圈 遊樂園 輕鬆小品 晴天口哨 泡泡派對 好心情 可愛日常 午後咖啡 騎單車 開心拍手'.split(' '),
+  epic: '勇往直前 夢想啟航 衝破極限 黎明曙光 英雄之路 永不放棄 飛越巔峰 熱血奔跑 勝利時刻 新的開始 光芒萬丈 挑戰自我 破浪前行 未來在望 團隊力量 站上舞台 燃燒鬥志 向陽而生 決戰時刻 榮耀之光'.split(' '),
+  sad: '雨中回憶 離別車站 思念 落葉 空房間 舊照片 月光獨白 未寄出的信 黃昏長廊 夜深人靜 遠方 淚光 冬日窗邊 斷線風箏 無聲告白 灰色天空 回不去的夏天 背影 孤燈 最後一頁'.split(' '),
+};
+// 每首歌的「樂譜設定」：用固定種子產生，所以同一首歌每次聽起來都一樣
+function musicPlan(cat, i) {
+  const rng = mulberry(7919 * (MUSIC_CATS.findIndex(x => x[0] === cat) + 1) + i * 104729), pick = a => a[Math.floor(rng() * a.length)];
+  const P = { cat, i, seed: Math.floor(rng() * 4294967295) };
+  if (cat === 'weather') return Object.assign(P, { name: WEATHER[i][0], D: 30 });
+  if (cat === 'inst') { const [name, lead, mode, mscale, bpm, oct, style] = INST[i]; Object.assign(P, { name, lead, mode, mscale, bpm, oct, style }); }
+  else if (cat === 'happy') Object.assign(P, { name: MUSIC_NAMES.happy[i], mode: 'major', mscale: rng() < .4 ? 'pent' : 'major', bpm: 112 + Math.round(rng() * 24), oct: 0, style: 'pop', lead: pick(['piano', 'marimba', 'uke', 'bell', 'whistle', 'chip', 'glock', 'guitar', 'epiano']) });
+  else if (cat === 'epic') Object.assign(P, { name: MUSIC_NAMES.epic[i], mode: rng() < .55 ? 'minor' : 'major', bpm: 92 + Math.round(rng() * 30), oct: 0, style: 'epic', lead: pick(['brass', 'strings', 'horn']) });
+  else Object.assign(P, { name: MUSIC_NAMES.sad[i], mode: 'minor', mscale: 'minor', bpm: 62 + Math.round(rng() * 16), oct: 0, style: 'ballad', lead: pick(['piano', 'strings', 'cello', 'flute', 'epiano', 'violin']) });
+  P.mscale = P.mscale || P.mode;
+  P.root = 57 + Math.floor(rng() * 8);
+  P.prog = pick(PROGS[P.mode]);
+  P.bpb = P.style === 'waltz' ? 3 : 4;
+  const barSec = P.bpb * 60 / P.bpm;
+  P.bars = Math.max(8, 4 * Math.round(30 / barSec / 4));
+  P.pats = P.bpb === 3 ? PATS.waltz : P.bpm >= 105 ? PATS.fast : P.bpm >= 84 ? PATS.mid : PATS.slow;
+  P.D = .2 + P.bars * barSec + 2.6;
+  return P;
+}
+// 旋律：三個動機依 A B A C 排列，每小節開頭落在和弦音上，最後一小節停在主音
+function genMelody(rng, P, pool, chordPcs, rootPc) {
+  const bpb = P.bpb, motifs = [0, 1, 2].map(() => { const r = P.pats[Math.floor(rng() * P.pats.length)]; return { r, st: r.map(() => [-2, -1, -1, 1, 1, 2, -3, 3, 0][Math.floor(rng() * 9)]) }; });
+  const form = [0, 1, 0, 2], out = []; let idx = Math.floor(pool.length / 2);
+  const nearest = pcs => { let best = idx, bd = 1e9; pool.forEach((m, i) => { const d = Math.abs(i - idx); if (pcs.includes(m % 12) && d < bd) { bd = d; best = i; } }); return best; };
+  for (let bar = 0; bar < P.bars; bar++) {
+    const b0 = bar * bpb;
+    if (bar === P.bars - 1) { idx = nearest([rootPc]); out.push({ b: b0, d: bpb, m: pool[idx] }); break; }
+    const M = motifs[form[bar % 4]]; idx = nearest(chordPcs(bar)); let b = b0;
+    M.r.forEach((d, i) => { if (i) idx = clamp(idx + M.st[i], 0, pool.length - 1); if (!(i && rng() < .1)) out.push({ b, d, m: pool[idx] }); b += d; });
+  }
+  return out;
+}
+function makeMusic(S, P) {
+  if (P.cat === 'weather') { WEATHER[P.i][1](S); return; }
+  const rng = S.rng, bpb = P.bpb, spb = 60 / P.bpm, t0 = .2, B = P.bars, H = SCALES[P.mode], MS = SCALES[P.mscale] || H, root = P.root;
+  const T = (bar, beat = 0) => t0 + (bar * bpb + beat) * spb;
+  const deg = bar => bar >= B - 1 ? 0 : P.prog[bar % P.prog.length];
+  const chord = (d, base = 0) => [0, 2, 4].map(k => root + base + H[(d + k) % 7] + 12 * Math.floor((d + k) / 7));
+  const center = root + 12 + 12 * P.oct, pool = [];
+  for (let m = center - 7; m <= center + 12; m++) if (MS.includes(((m - root) % 12 + 12) % 12)) pool.push(m);
+  const mel = genMelody(rng, P, pool, bar => chord(deg(bar)).map(m => m % 12), root % 12);
+  const N = (v, t, m, d, vel, o) => S.note(v, t, m, d, vel, o);
+  const lead = (v, vel, from = 1, oct = 0, o = {}) => { let prev = null; for (const n of mel) { if (Math.floor(n.b / bpb) < from) continue; let t = t0 + n.b * spb; if (o.swing && n.b % 1 === .5) t += spb * .16;
+    N(v, t, n.m + 12 * oct, n.d * spb * (o.legato ?? .92), vel * (.85 + rng() * .15), v === 'erhu' && prev != null && Math.abs(prev - n.m) <= 5 ? { slideFrom: midiF(prev + 12 * oct) } : undefined); prev = n.m; } };
+  const pad = (v, vel, from = 0, to = B, base = -12) => { for (let bar = from; bar < to; bar++) for (const m of chord(deg(bar), base)) N(v, T(bar), m, bpb * spb * (bar === B - 1 ? 1.6 : 1.02), vel); };
+  const fifth = rng() < .4;
+  const bass = (v, beats, vel, from = 0, base = -24) => { for (let bar = from; bar < B; bar++) { const r = chord(deg(bar), base)[0]; if (bar === B - 1) { N(v, T(bar), r, bpb * spb * 1.5, vel); continue; }
+    beats.forEach((b, j) => N(v, T(bar, b), fifth && b === 2 ? r + 7 : r, spb * Math.min(.95, ((beats[j + 1] ?? bpb) - b) * .95), vel)); } };
+  const arp = (v, vel, from = 0, to = B, base = -12, step = .5, pat = [0, 1, 2, 3, 2, 1]) => { for (let bar = from; bar < to; bar++) { const c = chord(deg(bar), base), notes = [...c, c[0] + 12, c[1] + 12]; let i = 0;
+    for (let b = 0; b < bpb - 1e-6; b += step) N(v, T(bar, b), notes[pat[i++ % pat.length]], step * spb * 1.8, vel * (b % 1 === 0 ? 1 : .8)); } };
+  const strum = (v, beats, vel, from = 0, base = -12) => { for (let bar = from; bar < B; bar++) { const c = chord(deg(bar), base), notes = [c[0], c[1], c[2], c[0] + 12, c[1] + 12];
+    (bar === B - 1 ? [0] : beats).forEach((b, j) => { const up = j % 2 === 1; (up ? [...notes].reverse().slice(0, 4) : notes).forEach((m, k) => N(v, T(bar, b) + k * .016, m, (bar === B - 1 ? bpb : .9) * spb, vel * (up ? .7 : 1))); }); } };
+  const drums = (kind, from = 1, to = B - 1, vel = 1) => {
+    const extraKick = rng() < .5;
+    for (let bar = from; bar < to; bar++) {
+      const fill = bar % 4 === 3;
+      if (bar % 8 === 0 && bar > 0 && kind !== 'light' && kind !== 'swing') S.crash(T(bar), .5 * vel);
+      if (kind === 'pop') { for (let b = 0; b < bpb; b++) { if (b % 2 === 0) S.kick(T(bar, b), vel); else S.snare(T(bar, b), .8 * vel); S.hat(T(bar, b), .7 * vel); S.hat(T(bar, b + .5), .45 * vel); } if (extraKick) S.kick(T(bar, 2.5), .7 * vel); if (fill) S.snare(T(bar, 3.5), .6 * vel); }
+      else if (kind === 'four') { for (let b = 0; b < bpb; b++) { S.kick(T(bar, b), vel); S.hat(T(bar, b + .5), .6 * vel, true); if (b % 2) S.clap(T(bar, b), .8 * vel); } }
+      else if (kind === 'epic') { S.kick(T(bar, 0), vel); S.kick(T(bar, .75), .7 * vel); S.kick(T(bar, 2), .9 * vel); S.snare(T(bar, 1), .8 * vel); for (let b = 0; b < bpb; b += .5) S.hat(T(bar, b), .3 * vel);
+        if (fill) [[2.5, 220], [3, 180], [3.25, 150], [3.5, 120], [3.75, 100]].forEach(([b, f]) => S.tom(T(bar, b), f, .9 * vel)); else S.snare(T(bar, 3), .8 * vel); }
+      else if (kind === 'light') { S.kick(T(bar, 0), .7 * vel); S.kick(T(bar, 2), .5 * vel); for (let b = 0; b < bpb; b += .5) S.shaker(T(bar, b), b % 1 ? .5 : .8); S.clap(T(bar, 1), .4 * vel); S.clap(T(bar, 3), .4 * vel); }
+      else if (kind === 'swing') { for (const b of [0, 1, 1.66, 2, 3, 3.66]) S.ride(T(bar, b), (b % 1 ? .6 : .9) * vel); S.hat(T(bar, 1), .5 * vel); S.hat(T(bar, 3), .5 * vel); S.kick(T(bar, 0), .35 * vel); S.kick(T(bar, 2), .25 * vel); if (rng() < .5) S.snare(T(bar, 2.66), .25 * vel); }
+    }
+    if (kind !== 'swing') { S.kick(T(to), vel); S.crash(T(to), .6 * vel); }
+  };
+  switch (P.style) {
+    case 'pop':
+      if (['uke', 'guitar'].includes(P.lead) || rng() < .5) { for (let bar = 0; bar < B - 1; bar++) for (const b of [.5, 1.5, 2.5, 3.5]) for (const m of chord(deg(bar), -12)) N('piano', T(bar, b), m, spb * .4, .35); pad('softpad', .3, B - 1); }
+      else strum('uke', [0, 1, 1.5, 2.5, 3, 3.5], .45);
+      bass('bass', [0, 2, 3.5], .7); drums('pop', 1, B - 1, .9); lead(P.lead, .75, 1); break;
+    case 'epic':
+      pad('strings', .45); arp('piano', .35, 0, B - 1, -12, .5, [0, 1, 2, 3]); bass('bass', [0, .5, 1, 1.5, 2, 2.5, 3, 3.5], .55, 2); drums('epic', 4, B - 1);
+      lead(P.lead === 'strings' ? 'violin' : P.lead, .7, 4); lead('strings', .35, 8, 1); S.taiko(T(B - 1), 1); break;
+    case 'ballad':
+      arp('piano', .32, 0, B - 1, -12, .5, [0, 1, 2, 3, 2, 1]); bass('piano', [0], .38); pad('softpad', .3, 2);
+      lead(P.lead, .55, 2, ['piano', 'epiano'].includes(P.lead) ? 1 : P.lead === 'cello' ? -1 : 0); break;
+    case 'solo': pad('softpad', .28); bass('bassSoft', [0, 2], .45); lead(P.lead, .75, 1); break;
+    case 'strum': strum('guitar', [0, 1, 1.5, 2.5, 3, 3.5], .4); bass('bassSoft', [0, 2], .45, 1); if (P.lead === 'guitar') lead('guitar', .75, 2, 1); else lead(P.lead, .7, 1); if (P.bpm >= 110) drums('light', 2); break;
+    case 'arp': arp('harp', .38, 0, B - 1, -12, .5, [0, 1, 2, 3, 4, 3, 2, 1]); pad('softpad', .2, 1); lead('harp', .75, 2, 1); break;
+    case 'jazzy':
+      for (let bar = 0; bar < B; bar++) { const c = chord(deg(bar), -24); if (bar === B - 1) { N('bassg', T(bar), c[0], 3 * spb, .7); break; } [c[0], c[1], c[2], chord(deg(bar + 1), -24)[0] + (rng() < .5 ? 1 : -1)].forEach((m, j) => N('bassg', T(bar, j), m, spb * .9, .7));
+        for (const b of [1, 2.66]) chord(deg(bar), -12).forEach(m => N('epiano', T(bar, b), m, spb * .5, .3)); }
+      drums('swing', 0, B - 1, .8); lead(P.lead, .75, 1, 0, { swing: true }); break;
+    case 'chorale': pad('organ', .4); bass('organ', [0], .4); lead('organ', .55, 1); break;
+    case 'waltz': for (let bar = 0; bar < B; bar++) { const c = chord(deg(bar), -12); N('accordion', T(bar), c[0] - 12, spb * .9, .55); if (bar === B - 1) break; for (const b of [1, 2]) c.forEach(m => N('accordion', T(bar, b), m, spb * .5, .3)); } lead('accordion', .7, 1); break;
+    case 'box': arp('musicbox', .35, 0, B - 1, 0, .5, [0, 2, 1, 2]); lead('musicbox', .7, 1); break;
+    case 'island': strum('guitar', [.5, 1.5, 2.5, 3.5], .3); bass('bass', [0, 1.5, 2], .6); drums('light', 1); lead('steeldrum', .8, 1); break;
+    case 'chinese': arp('guzheng', P.lead === 'guzheng' ? .32 : .28, 0, B - 1, -12, P.lead === 'guzheng' ? .5 : 1, P.lead === 'guzheng' ? [0, 1, 2, 3, 4, 3, 2, 1] : [0, 1, 2, 3]); pad('softpad', .18);
+      lead(P.lead, .75, 1, 0, P.lead === 'erhu' ? { legato: 1 } : {}); break;
+    case 'synth': pad('pad', .35); bass('bass', [0, .5, 1, 1.5, 2, 2.5, 3, 3.5], .55); drums('four', 1); lead('lead', .7, 2); break;
+    case 'chip': bass('chipTri', [0, .5, 1, 1.5, 2, 2.5, 3, 3.5], .6, 0, -12); arp('chip', .18, 0, B - 1, 0, .25, [0, 1, 2, 3]); drums('pop', 1, B - 1, .6); lead('chip', .45, 1, 1); break;
+    case 'funk':
+      for (let bar = 0; bar < B; bar++) { const r = chord(deg(bar), -24)[0]; if (bar === B - 1) { N('bassg', T(bar), r, bpb * spb, .9); break; } [[0, 0], [.75, 0], [1.5, 12], [2, 0], [2.75, 7], [3.5, 12]].forEach(([b, iv]) => N('bassg', T(bar, b), r + iv, spb * .35, .85)); }
+      for (let bar = 1; bar < B - 1; bar++) for (const b of [.5, 2.5]) chord(deg(bar)).forEach(m => N('epiano', T(bar, b), m, spb * .3, .28));
+      drums('pop', 1, B - 1, .85); break;
+    case 'jazzdrums':
+      drums('swing', 0, B - 1, 1);
+      for (let bar = 0; bar < B; bar++) { const c = chord(deg(bar), -24); if (bar === B - 1) { N('bassg', T(bar), c[0], bpb * spb, .5); S.crash(T(bar), .7); S.kick(T(bar), .8); break; }
+        [c[0], c[1], c[2], c[1]].forEach((m, j) => N('bassg', T(bar, j), m, spb * .9, .5)); if (bar % 4 === 3) [2, 2.33, 2.66, 3, 3.33, 3.66].forEach((b, j) => S.snare(T(bar, b), .35 + j * .08)); }
+      break;
+    case 'djembe': {
+      const pats = [[0, 0, 2, 1, 2, 1, 0, 1], [0, 1, 1, 2, 0, 1, 2, 2], [0, -1, 2, 1, 0, 2, 1, 1]];
+      for (let bar = 0; bar < B; bar++) { if (bar === B - 1) { S.djembe(T(bar), 0, 1); break; }
+        pats[bar % 4 === 3 ? 2 : bar % 2].forEach((k, j) => { if (k >= 0) S.djembe(T(bar, j * .5), k, .8 + rng() * .2, -.3); });
+        if (bar >= 2) for (let j = 0; j < 16; j++) { if (j % 2) { const k = rng() < .25 ? 2 : rng() < .5 ? 1 : -1; if (k >= 0) S.djembe(T(bar, j * .25), k, .45, .35); } S.shaker(T(bar, j * .25), j % 2 ? .4 : .7); } }
+      break; }
+    case 'taiko':
+      for (let bar = 0; bar < B; bar++) { if (bar === B - 1) { S.taiko(T(bar), 1.2); S.crash(T(bar), .6); break; }
+        const p = bar % 4 === 3 ? [0, .5, 1, 1.5, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75] : [0, 1.5, 2, 3];
+        p.forEach((b, j) => S.taiko(T(bar, b), bar % 4 === 3 ? .5 + j / p.length * .6 : (b === 0 ? 1 : .7))); if (bar % 4 !== 3) for (const b of [.5, 1, 2.5, 3.5]) S.kane(T(bar, b), .35); }
+      lead('dizi', .4, 4, 1); break;
+    case 'ensemble': pad('strings', .45); bass('cello', [0], .45); lead('violin', .65, 1); break;
+  }
+}
+// AudioBuffer → WAV 檔（16 位元）
+function wavBlob(ab) {
+  const ch = ab.numberOfChannels, n = ab.length, buf = new ArrayBuffer(44 + n * ch * 2), v = new DataView(buf), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * ch * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, ch, true);
+  v.setUint32(24, ab.sampleRate, true); v.setUint32(28, ab.sampleRate * ch * 2, true); v.setUint16(32, ch * 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * ch * 2, true);
+  const cs = [...Array(ch)].map((_, i) => ab.getChannelData(i)); let o = 44;
+  for (let i = 0; i < n; i++) for (let c = 0; c < ch; c++) { const s = clamp(cs[c][i], -1, 1); v.setInt16(o, s < 0 ? s * 32768 : s * 32767, true); o += 2; }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+async function renderMusic(m) {
+  const P = m.plan, sr = 44100, len = Math.ceil(sr * P.D), ac = new OfflineAudioContext(2, len, sr);
+  const S = new Synth(ac, mulberry(P.seed), P.D);
+  makeMusic(S, P);
+  const WIN = 1.5; S.step(0, WIN + .1);
+  for (let s = WIN; s < P.D - .2; s += WIN) { const at = Math.round(s * sr / 128) * 128 / sr; ac.suspend(at).then(() => { S.step(at, at + WIN + .1); ac.resume(); }); }
+  const ab = await ac.startRendering();
+  // 音量標準化、開頭與結尾淡入淡出
+  let peak = 0; for (let c = 0; c < 2; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) { const x = Math.abs(d[i]); if (x > peak) peak = x; } }
+  const k = peak > 0 ? Math.min(6, .89 / peak) : 1, fo = Math.round(sr * (P.cat === 'weather' ? 2 : 1.2)), fi = P.cat === 'weather' ? Math.round(sr * 1.5) : 0;
+  for (let c = 0; c < 2; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) { let x = d[i] * k; if (i < fi) x *= i / fi; if (i > len - fo) x *= (len - i) / fo; d[i] = x; } }
+  m.url = URL.createObjectURL(wavBlob(ab)); m.wave = waveImage(ab.getChannelData(0), ab.duration);
+  renderTimeline(); needDraw = true;
+}
+function ensureMusic(m) {
+  if (!m || !m.music || m.url) return Promise.resolve();
+  if (!m.rendering) m.rendering = renderMusic(m).catch(e => { m.rendering = null; toast('配樂產生失敗：' + (e?.message || e)); });
+  return m.rendering;
+}
+const MUSIC_N = {};
+MUSIC_CATS.forEach(([k]) => {
+  const n = k === 'weather' ? WEATHER.length : k === 'inst' ? INST.length : MUSIC_NAMES[k].length; MUSIC_N[k] = n;
+  for (let i = 0; i < n; i++) { const P = musicPlan(k, i), id = 'mu_' + k + i; Media.set(id, { id, name: P.name, kind: 'audio', url: null, wave: '', dur: snapF(sec(P.D)), builtin: true, cat: 'music', sub: k, music: true, plan: P, icon: '♪' }); }
+});
+// 試聽
+let pvAudio = null, pvId = null;
+function stopPreview() { if (pvAudio) { pvAudio.pause(); pvAudio = null; } pvId = null; document.querySelectorAll('[data-preview]').forEach(b => { b.textContent = '▶'; }); }
+async function previewMusic(id) {
+  if (pvId === id) { stopPreview(); return; }
+  stopPreview(); const m = Media.get(id); if (!m) return; pvId = id;
+  document.querySelectorAll(`[data-preview="${id}"]`).forEach(b => { b.textContent = '…'; });
+  if (!m.url) toast(`正在產生配樂「${m.name}」…`);
+  await ensureMusic(m); if (pvId !== id || !m.url) return;
+  pvAudio = new Audio(m.url); pvAudio.onended = stopPreview; pvAudio.play().catch(() => {});
+  document.querySelectorAll(`[data-preview="${id}"]`).forEach(b => { b.textContent = '■'; });
+}
+
+// ---------- 縮圖 ----------
+const MASK_THUMB = {}, TP_THUMB = {};
+function buildLibrary2(tc, tg) {
+  const mc = document.createElement('canvas'); mc.width = mc.height = 160; const mg = mc.getContext('2d');
+  for (const [k, , fn] of MASKS) {
+    mg.setTransform(1, 0, 0, 1, 0, 0); mg.globalCompositeOperation = 'source-over'; mg.clearRect(0, 0, 160, 160);
+    const gr = mg.createLinearGradient(0, 0, 160, 160); gr.addColorStop(0, '#f0a83a'); gr.addColorStop(1, '#3a78ad'); mg.fillStyle = gr;
+    mg.save(); mg.translate(80, 80); try { fn(mg, 150, 150, .6); } catch { } mg.restore();
+    mg.globalCompositeOperation = 'destination-over'; mg.fillStyle = '#2a2f35'; mg.fillRect(0, 0, 160, 160);
+    MASK_THUMB[k] = mc.toDataURL('image/png');
+  }
+  GS.forEach(([, dur], i) => {
+    const m = Media.get('gs' + i); if (!m) return;
+    try { const cvs = drawGen({ inPt: 0, start: 0, speed: 1, dur: sec(dur), gen: { kind: 'gs' + i } }, sec(Math.min(1.4, dur / 2)), 320, 180); tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, 320, 180); tg.drawImage(cvs, 0, 0); m.thumb = tc.toDataURL('image/jpeg', .8); } catch { }
+  });
+  const saved = ctx, savedBoxes = textBoxes;
+  for (const p of TEXT_PRESETS) {
+    tg.setTransform(1, 0, 0, 1, 0, 0); const gr = tg.createLinearGradient(0, 0, 320, 180); gr.addColorStop(0, '#2b3a55'); gr.addColorStop(1, '#5a4a6a'); tg.fillStyle = gr; tg.fillRect(0, 0, 320, 180);
+    const text = Object.assign({ content: p.d3 ? '3D 立體' : p.name, x: 50, anim: { in: 'none', out: 'none' } }, p.d3 ? TEXT3D_BASE : p.text, p.d3 ? { d3: p.d3, size: 22 } : { y: 50, size: Math.max(9, p.text.size * 1.6) });
+    ctx = tg; textBoxes = [];
+    try { drawText({ id: -1, type: 'text', start: 0, dur: sec(4), fadeIn: 0, fadeOut: 0, text }, sec(2.2)); } catch { } finally { ctx = saved; textBoxes = savedBoxes; }
+    TP_THUMB[p.id] = tc.toDataURL('image/jpeg', .85);
+  }
+}
+
+// ---------- 新指令：蒙版、綠幕去背、3D 字幕 ----------
+// 沒有指定片段時：用選取的畫面片段；沒選就用播放頭位置最上層的畫面片段
+function visualTarget(p) {
+  let c = p.clipId != null ? getClip(p.clipId) : getClip(UI.sel);
+  if (p.clipId == null && (!c || c.type === 'text' || c.type === 'audio')) c = [...VIDEO_TRACKS].reverse().map(tr => clipAt(tr, UI.playhead)).find(Boolean) || null;
+  if (!c || c.type === 'text' || c.type === 'audio') throw new Error('請先選一個畫面片段（影片、圖片或內建素材），或把播放頭移到有畫面的位置');
+  return c;
+}
+defCmd('clip.mask', '蒙版', `{clipId?, mask?:"none|${MASKS.map(m => m[0] + m[1]).join('|')}", feather?(0~60 邊緣柔化), invert?:bool(反轉，挖空形狀)}：套在畫面片段上，形狀外面變透明、露出下層軌道`, p => {
+  const c = visualTarget(p);
+  if (p.mask != null) {
+    if (p.mask === 'none') delete c.mask;
+    else { if (!MASK[p.mask]) throw new Error('沒有這個蒙版：' + p.mask); c.mask = { kind: p.mask, feather: MASK[p.mask].feather, invert: c.mask?.invert || false }; }
+  }
+  if (c.mask) { if (p.feather != null) c.mask.feather = clamp(Number(p.feather), 0, 60); if (p.invert != null) c.mask.invert = !!p.invert; }
+  UI.sel = c.id;
+  return c.mask ? `片段 #${c.id} 套用蒙版「${MASK[c.mask.kind].name}」` : `片段 #${c.id} 已移除蒙版`;
+});
+defCmd('clip.key', '綠幕去背', '{clipId?, on?:bool, color?:"green"|"blue", amount?(0~100，越大去得越多，預設50)}：把綠色（或藍色）背景變透明', p => {
+  const c = visualTarget(p);
+  const k = c.key || (c.key = { on: true, color: 'green', amt: 50 });
+  if (p.on != null) k.on = !!p.on;
+  if (p.color === 'green' || p.color === 'blue') k.color = p.color;
+  if (p.amount != null) k.amt = clamp(Number(p.amount), 0, 100);
+  UI.sel = c.id;
+  return `片段 #${c.id} ${k.on ? `已開啟${k.color === 'blue' ? '藍' : '綠'}幕去背` : '已關閉去背'}`;
+});
+defCmd('text.d3', '3D 立體文字', `{clipId?|clipIds?|all?, on?:bool(true=3D 立體、false=一般文字), anim?:"${Object.entries(D3_ANIMS).map(([k, v]) => k + v).join('|')}", depth?(0~40 厚度), face?(#hex 正面上半), face2?(#hex 正面下半), side?(#hex 側面)}`, p => {
+  const list = targets(Object.assign({ type: 'text' }, p)).filter(c => c.type === 'text');
+  if (!list.length) throw new Error('請選一個字幕片段');
+  if (p.anim != null && !D3_ANIMS[p.anim]) throw new Error('沒有這個 3D 動畫：' + p.anim);
+  const hx = v => /^#[0-9a-f]{6}$/i.test(v || '');
+  for (const c of list) {
+    if (p.on === false) { delete c.text.d3; continue; }
+    if (!c.text.d3) { c.text.d3 = structuredClone((TEXT_PRESETS.find(x => x.d3 && x.d3.anim === (p.anim || 'flip')) || TPRE.td0).d3); if (c.text.size < 8) c.text.size = 15; c.text.bg = false; }
+    const d = c.text.d3;
+    if (p.anim != null) d.anim = p.anim;
+    if (p.depth != null) d.depth = clamp(Number(p.depth), 0, 40);
+    if (hx(p.face)) d.face = [p.face, d.face[1]]; if (hx(p.face2)) d.face = [d.face[0], p.face2]; if (hx(p.side)) d.side = p.side;
+  }
+  return `設定了 ${list.length} 個字幕的 3D 效果`;
+});
 
 
 /* =====================================================================
@@ -1268,6 +1950,7 @@ function syncMedia(t, playing) {
   for (const c of doc.clips) {
     const m = Media.get(c.mediaId);
     if (!m || !(m.kind === 'video' || m.kind === 'audio')) continue;
+    if (!m.url) { if (m.music) ensureMusic(m); continue; }     // 配樂還在產生中
     const active = t >= c.start && t < clipEnd(c);
     const soon = !active && c.start > t && c.start - t < sec(1.5);
     const hold = !active && t >= clipEnd(c) && t < clipEnd(c) + transPost(c);   // 轉場後半段：停在最後一格
@@ -1414,6 +2097,11 @@ function drawGen(c, t, W, H) {
   if (genCv.width !== W || genCv.height !== H) { genCv.width = W; genCv.height = H; }
   const g = genCtx, local = toSec(c.inPt + (t - c.start) * c.speed), k = c.gen?.kind;
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+  if (GSCR[k]) {          // 綠幕素材：綠色背景＋動態元素
+    g.clearRect(0, 0, W, H); g.fillStyle = '#00b140'; g.fillRect(0, 0, W, H);
+    try { GSCR[k].fn({ g, W, H, t: local, D: toSec(c.inPt + c.dur * c.speed) }); } catch { }
+    g.restore(); return genCv;
+  }
   if (BASIC[k]) {         // 基本素材（背景）
     g.clearRect(0, 0, W, H);
     try { BASIC[k]({ g, W, H, t: local, D: toSec(c.inPt + c.dur * c.speed), acc: '#f0a83a', tw: 0, ty: H / 2, ts: 0 }); } catch { }
@@ -1452,7 +2140,12 @@ function drawGen(c, t, W, H) {
   return genCv;
 }
 function drawVisual(c, t) {
-  const W = cv.width, H = cv.height;
+  const mk = c.mask && MASK[c.mask.kind];
+  if (mk) drawMasked(c, t, mk); else drawVisualBody(c, t);
+}
+// 畫一個畫面片段；回傳它在畫面上的位置與大小（蒙版用）
+function drawVisualBody(c, t) {
+  const W = ctx.canvas.width, H = ctx.canvas.height;
   const m = Media.get(c.mediaId);
   let src = null, sw = W, sh = H;
   if (!m) {     // 媒體離線
@@ -1466,6 +2159,7 @@ function drawVisual(c, t) {
   else if (m.kind === 'image') { src = m.img; sw = m.w; sh = m.h; }
   else if (m.kind === 'gen') { src = drawGen(c, t, W, H); }
   if (!src || !sw || !sh) return;
+  if (c.key && c.key.on) { const k = chromaKey(src, sw, sh, c.key); if (k) { src = k; sw = k.width; sh = k.height; } }
   const tf = c.tf, fx = c.fx, L = LOOKS[fx.look] || LOOKS.none;
   const fit = Math.min(W / sw, H / sh) * tf.scale / 100, dw = sw * fit, dh = sh * fit;
   ctx.save();
@@ -1494,6 +2188,7 @@ function drawVisual(c, t) {
     ctx.fillStyle = gr; ctx.fillRect(-dw / 2, -dh / 2, dw, dh);
   }
   ctx.restore();
+  return { cx: W / 2 + tf.x / 100 * W / 2, cy: H / 2 + tf.y / 100 * H / 2, rot: tf.rot * Math.PI / 180, dw, dh };
 }
 function wrapText(text, maxW) {
   const lines = [];
@@ -1552,10 +2247,10 @@ function animState(c, t) {
   return st;
 }
 function drawText(c, t) {
-  const W = cv.width, H = cv.height, tx = c.text;
+  const W = ctx.canvas.width, H = ctx.canvas.height, tx = c.text;
   const size = Math.round(H * tx.size / 100) || 20;
   ctx.save();
-  ctx.font = `${tx.bold ? 700 : 500} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
+  ctx.font = `${tx.d3 ? 900 : tx.bold ? 700 : 500} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
   ctx.textBaseline = 'middle'; ctx.textAlign = 'left';
   textXY(tx);
   const lines = wrapText(tx.content, W * .86), lh = size * 1.35, total = lines.length * lh;
@@ -1573,6 +2268,9 @@ function drawText(c, t) {
   ctx.translate(cx + A.dx * W, cy + A.dy * H);
   if (A.scale !== 1) ctx.scale(A.scale, A.scale);
   if (A.blur > 0.2) ctx.filter = `blur(${(A.blur * H / 720).toFixed(1)}px)`;
+  const R = tx.d3 ? anim3D(tx.d3, toSec(t - c.start), size) : null;
+  if (R) { ctx.translate(0, R.dy); ctx.rotate(R.rot); ctx.transform(R.sx * R.scale, 0, R.skew, R.sy * R.scale, 0, 0); }
+  let ci = 0;
   if (A.wipe < 1) {        // 擦拭：只露出一部分寬度
     ctx.beginPath();
     const w = maxW + size; const x0 = -w / 2;
@@ -1590,6 +2288,11 @@ function drawText(c, t) {
     budget -= chars.length;
     const y = y0 + i * lh, lx = -widths[i] / 2;      // 以完整行寬置中，打字時字才不會左右跳
     if (!shown) return;
+    if (R) {        // 3D 立體文字
+      if (R.perChar) { let x = lx; for (const ch of Array.from(shown)) { const q = R.perChar(ci++); ctx.save(); ctx.globalAlpha *= q.alpha; glyph3D(ctx, ch, x, y + q.dy, size, tx.d3, R.ex, R.ey, q.depthK); ctx.restore(); x += ctx.measureText(ch).width; } }
+      else glyph3D(ctx, shown, lx, y, size, tx.d3, R.ex, R.ey, R.depthK);
+      return;
+    }
     if (tx.bg) {
       const w = ctx.measureText(shown).width + size * .8;
       ctx.fillStyle = 'rgba(0,0,0,.6)';
@@ -1690,8 +2393,8 @@ function renderBin() {
   $('binCount').textContent = mine.length ? `${mine.length} 個` : '';
   const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
       <div class="th" style="${m.thumb ? `background-image:url(${m.thumb})` : m.kind === 'audio' ? 'background:linear-gradient(135deg,#1e3a30,#3b9372)' : 'background:linear-gradient(135deg,#3a2418,#a8613f)'}">${m.thumb ? '' : (m.icon || '♪')}</div>
-      ${m.cat === 'sticker' ? '' : `<span class="kind" style="background:${{ video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${m.cat === 'intro' ? '片頭' : m.cat === 'outro' ? '片尾' : { video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>`}
-      <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到播放頭位置的疊加軌' : '接在時間軸最後'}">＋</button>
+      ${m.cat === 'sticker' ? '' : `<span class="kind" style="background:${m.cat === 'green' ? '#00a03a' : { video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${m.cat === 'intro' ? '片頭' : m.cat === 'outro' ? '片尾' : m.cat === 'green' ? '綠幕' : { video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>`}
+      <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到播放頭位置的疊加軌' : m.cat === 'green' ? '放到播放頭位置的疊加軌（自動去背）' : '接在時間軸最後'}">＋</button>
       <div class="nm">${esc(m.name)}</div><div class="du">${m.kind === 'image' ? '靜態圖片' : fmtDur(m.dur)}</div></div>`;
   $('bin').innerHTML = mine.length ? mine.map(card).join('') : '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>';
   const cat = k => [...Media.values()].filter(m => m.builtin && m.cat === k);
@@ -1700,6 +2403,18 @@ function renderBin() {
   $('binSticker').innerHTML = cat('sticker').map(m => card(m).replace('class="th" style="', `class="th" style="background:#2a2f35 url(${m.thumb}) center/${m.w > m.h ? '90% auto' : '78%'} no-repeat;`)).join('');
   $('binGen').innerHTML = cat('basic').map(card).join('') +
     `<div class="mi" data-text="1" title="在播放頭加字幕"><div class="th" style="background:linear-gradient(135deg,#2c2240,#8e6cc4);font-family:var(--f-logo);color:#fff">字</div><span class="kind" style="background:var(--t)">文字</span><button class="add" data-addtext="1">＋</button><div class="nm">字幕／標題</div><div class="du">3.0 秒</div></div>`;
+  $('binMask').innerHTML = MASKS.map(([k, n]) => `<div class="mi" data-mask="${k}" title="${esc(n)}（雙擊套用到選取的畫面片段）"><div class="th" style="background:#2a2f35 url(${MASK_THUMB[k] || ''}) center/cover no-repeat"></div><button class="add" data-addmask="${k}" title="套用到選取的畫面片段">＋</button><div class="nm">${esc(n)}</div></div>`).join('');
+  $('binGreen').innerHTML = cat('green').map(card).join('');
+  const tcard = p => `<div class="mi" data-tp="${p.id}" title="${esc(p.name)}（雙擊加到播放頭）"><div class="th" style="background-image:url(${TP_THUMB[p.id] || ''})"></div><span class="kind" style="background:var(--t)">${p.d3 ? '3D' : '文字'}</span><button class="add" data-addtp="${p.id}" title="在播放頭加這種字幕">＋</button><div class="nm">${esc(p.name)}</div><div class="du">3.0 秒</div></div>`;
+  $('binText').innerHTML = TEXT_PRESETS.filter(p => !p.d3).map(tcard).join('');
+  $('binText3d').innerHTML = TEXT_PRESETS.filter(p => p.d3).map(tcard).join('');
+  renderMusicList();
+}
+let musicCat = 'happy';
+function renderMusicList() {
+  $('musicCats').innerHTML = MUSIC_CATS.map(([k, n]) => `<button data-mcat="${k}" aria-pressed="${musicCat === k}">${n} ${MUSIC_N[k]}</button>`).join('');
+  $('binMusic').innerHTML = [...Media.values()].filter(m => m.cat === 'music' && m.sub === musicCat).map(m => `<div class="mrow" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到配樂軌）">
+      <button class="pv" data-preview="${m.id}" title="試聽">${pvId === m.id ? '■' : '▶'}</button><div class="mt"><b>${esc(m.name)}</b><small>${fmtDur(m.dur)}</small></div><button class="add2" data-add="${m.id}" title="放到播放頭位置的配樂軌">＋</button></div>`).join('');
 }
 
 function rowH(kind) { return kind === 'text' ? 46 : kind === 'video' ? 58 : 48; }
@@ -1728,7 +2443,7 @@ function renderTimeline() {
       else if (m && m.kind === 'audio' && m.wave) bg = `background-image:url(${m.wave});background-size:${toSec(m.dur) * pps / c.speed}px 100%;background-position:${-toSec(c.inPt) * pps / c.speed}px 0`;
       const kind = c.type === 'text' ? 'text' : (m ? m.kind : c.type);
       const an = c.type === 'text' ? c.text.anim : null;
-      const badges = [an && (an.in !== 'none' || an.out !== 'none') ? '✦' + [ANIM_IN[an.in]?.name, ANIM_OUT[an.out]?.name].filter(n => n && n !== '無').join('→') : '', c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : ''].filter(Boolean).join(' · ');
+      const badges = [an && (an.in !== 'none' || an.out !== 'none') ? '✦' + [ANIM_IN[an.in]?.name, ANIM_OUT[an.out]?.name].filter(n => n && n !== '無').join('→') : '', c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : '', c.text?.d3 ? '3D ' + D3_ANIMS[c.text.d3.anim] : '', c.mask ? '蒙版：' + MASK[c.mask.kind]?.name : '', c.key?.on ? '去背' : '', m?.music && !m.url ? '產生中…' : ''].filter(Boolean).join(' · ');
       return `<div class="clip k-${kind} ${UI.sel === c.id ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
         ${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
         <div class="hd l"></div><span class="nm">${esc(clipName(c))}</span>${badges ? `<span class="bd">${esc(badges)}</span>` : ''}<div class="hd r"></div></div>`;
@@ -1776,6 +2491,13 @@ function renderInspector() {
         <div class="field"><label>放在軌道</label><div class="seg" data-seg="track">${TEXT_TRACKS.map(tr => `<button data-v="${tr}" aria-pressed="${c.track === tr}">${tr}</button>`).join('')}</div><span></span></div>
         <div class="field"><label for="f_color">顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
         <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 黑色底框</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div></div>`;
+      const d3 = c.text.d3;
+      h += `<div class="sec"><h4>文字類型 ${d3 ? '<button class="btn ghost" data-act="d3Preview" style="padding:2px 6px">▶ 預覽</button>' : ''}</h4>
+        <div class="field"><label>類型</label><div class="seg" data-seg="d3on"><button data-v="0" aria-pressed="${!d3}">一般文字</button><button data-v="1" aria-pressed="${!!d3}">3D 立體</button></div><span></span></div>
+        ${d3 ? `<div class="field"><label for="f_d3a">3D 動畫</label><select id="f_d3a">${Object.entries(D3_ANIMS).map(([k, v]) => `<option value="${k}" ${d3.anim === k ? 'selected' : ''}>${v}</option>`).join('')}</select><span></span></div>
+        ${rng('d3depth', '厚度', d3.depth ?? 14, 0, 40, 1)}
+        <div class="field"><label>正面顏色</label><div class="row2" style="margin:0"><input type="color" id="f_d3f1" value="${d3.face[0]}" title="上半"><input type="color" id="f_d3f2" value="${d3.face[1]}" title="下半"></div><span></span></div>
+        <div class="field"><label for="f_d3s">側面顏色</label><input type="color" id="f_d3s" value="${d3.side}"><span></span></div>` : ''}</div>`;
       const an = c.text.anim || { in: 'none', out: 'none', inDur: .6, outDur: .6 };
       h += `<div class="sec"><h4>字幕動畫 <button class="btn ghost" data-act="animPreview" style="padding:2px 6px">▶ 預覽</button></h4>
         <div class="field"><label for="f_ain">開始動畫</label><select id="f_ain">${Object.entries(ANIM_IN).map(([k, v]) => `<option value="${k}" ${an.in === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select><span></span></div>
@@ -1805,6 +2527,14 @@ function renderInspector() {
     h += `<div class="sec"><h4>淡入淡出</h4>${rng('fadeIn', '淡入', c.fadeIn, 0, Math.min(5, toSec(c.dur)), .1, 's')}${rng('fadeOut', '淡出', c.fadeOut, 0, Math.min(5, toSec(c.dur)), .1, 's')}</div>`;
     if (c.type !== 'text' && c.type !== 'audio') h += `<div class="sec"><h4>位置與大小 <button class="btn ghost" data-act="resetTf" style="padding:2px 6px">重設</button></h4>
       ${rng('scale', '縮放', c.tf.scale, 10, 300, 1, '%')}${rng('x', '左右', c.tf.x, -100, 100, 1)}${rng('y', '上下', c.tf.y, -100, 100, 1)}${rng('rotation', '旋轉', c.tf.rot, -180, 180, 1, '°')}${rng('opacity', '不透明', c.tf.opacity, 0, 100, 1, '%')}</div>`;
+    if (c.type !== 'text' && c.type !== 'audio') {
+      const mk = c.mask, ky = c.key;
+      h += `<div class="sec"><h4>蒙版</h4><div class="field"><label for="f_mask">形狀</label><select id="f_mask"><option value="none">無</option>${MASKS.map(([k, n]) => `<option value="${k}" ${mk?.kind === k ? 'selected' : ''}>${n}</option>`).join('')}</select><span></span></div>
+        ${mk ? rng('feather', '柔化', mk.feather, 0, 60, 1) + `<label><input type="checkbox" id="f_minv" ${mk.invert ? 'checked' : ''}> 反轉（挖空形狀）</label>` : '<p class="note">形狀外面會變透明、露出下層軌道。也可以到素材箱「蒙版」分頁按「＋」套用。</p>'}</div>
+        <div class="sec"><h4>綠幕去背</h4><label><input type="checkbox" id="f_key" ${ky?.on ? 'checked' : ''}> 把${ky?.color === 'blue' ? '藍' : '綠'}色背景變透明</label>
+        ${ky?.on ? `<div class="field"><label>幕色</label><div class="seg" data-seg="keycolor"><button data-v="green" aria-pressed="${ky.color !== 'blue'}">綠幕</button><button data-v="blue" aria-pressed="${ky.color === 'blue'}">藍幕</button></div><span></span></div>${rng('keyAmt', '強度', ky.amt, 0, 100, 1)}` : ''}
+        <p class="note">把綠幕片段放在 V2 以上的疊加軌，去背後就會看到下面的畫面。</p></div>`;
+    }
     h += `<div class="row2"><button class="btn" data-act="split">✂ 在播放頭分割</button><button class="btn" data-act="dup">複製</button><button class="btn" data-act="del" style="color:var(--danger)">刪除</button></div>`;
     if (m && m.kind === 'video') h += `<p class="note">原始素材：${m.w}×${m.h}，長 ${fmtDur(m.dur)}。從第 ${toSec(c.inPt).toFixed(2)} 秒開始取用。</p>`;
     $('pProps').innerHTML = h;
@@ -1832,7 +2562,10 @@ function projectSummary() {
   return {
     畫面: FORMATS[doc.format].join('x'), 總長秒: +toSec(seqDur()).toFixed(2), 播放頭秒: +toSec(UI.playhead).toFixed(2), 選取片段: UI.sel,
     我的素材: [...Media.values()].filter(m => !m.builtin).map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
-    內建素材: Object.fromEntries(['intro', 'outro', 'sticker', 'basic'].map(k => [{ intro: '片頭(用 media.place 會自動放最前面)', outro: '片尾(自動接在最後)', sticker: '圖檔貼圖(自動貼到播放頭位置空著的V2/V3/V4)', basic: '基本' }[k], [...Media.values()].filter(m => m.builtin && m.cat === k).map(m => m.id + ' ' + m.name).join('、')])),
+    內建素材: Object.fromEntries(['intro', 'outro', 'sticker', 'basic', 'green', 'music'].map(k => [{ intro: '片頭(用 media.place 會自動放最前面)', outro: '片尾(自動接在最後)', sticker: '圖檔貼圖(自動貼到播放頭位置空著的V2/V3/V4)', basic: '基本', green: '綠幕素材(自動放到疊加軌並開啟去背)', music: '無版權配樂(自動放到播放頭位置的A2/A1)' }[k],
+      [...Media.values()].filter(m => m.builtin && m.cat === k).map(m => m.id + ' ' + (m.cat === 'music' ? `[${MUSIC_CATS.find(x => x[0] === m.sub)[1]}]` : '') + m.name).join('、')])),
+    蒙版: '用 clip.mask：' + MASKS.map(m => m[0] + ' ' + m[1]).join('、'),
+    字幕樣式: '用 text.add 的 preset：' + TEXT_PRESETS.map(p => p.id + ' ' + p.name + (p.d3 ? '(3D)' : '')).join('、'),
     片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
       clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
       ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y, 動畫: c.text.anim || null } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look, 轉場: c.trans && c.trans.type !== 'none' ? c.trans : null, 接在前一段後面: !!prevAdjacent(c) }),
@@ -1953,6 +2686,8 @@ function openExport() {
 async function startExport() {
   const list = JSON.parse($('exFmt').dataset.list || '[]'), pick = list[Number($('exFmt').value)] || list[0];
   if (!pick) return;
+  const pending = [...new Set(doc.clips.map(c => Media.get(c.mediaId)).filter(m => m && m.music && !m.url))];
+  if (pending.length) { $('exStat').textContent = `正在產生配樂（${pending.length} 首）…`; $('exGo').disabled = true; await Promise.all(pending.map(ensureMusic)); $('exGo').disabled = false; }
   ensureAudio(); if (AC) await AC.resume();
   UI.exporting = true; recCancel = false; recChunks = []; recBlob = null; recMime = pick;
   UI.sel = null; renderTimeline();
@@ -2075,15 +2810,22 @@ document.addEventListener('drop', e => { if (e.dataTransfer?.files?.length) { e.
 // 素材箱：加到時間軸 / 拖到軌道
 function switchBinTab(k) {
   document.querySelectorAll('#binTabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.bt === k));
-  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic']) $('bt-' + x).hidden = x !== k;
+  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic', 'mask', 'green', 'music', 'text']) $('bt-' + x).hidden = x !== k;
   try { localStorage.setItem('kk-bintab', k); } catch { }
 }
 $('binTabs').addEventListener('click', e => { const b = e.target.closest('[data-bt]'); if (b) switchBinTab(b.dataset.bt); });
 document.querySelector('.bin-p').addEventListener('click', e => {
+  const pv = e.target.closest('[data-preview]'); if (pv) { previewMusic(pv.dataset.preview); return; }
+  const mc = e.target.closest('[data-mcat]'); if (mc) { musicCat = mc.dataset.mcat; renderMusicList(); return; }
+  const am = e.target.closest('[data-addmask]'); if (am) { const r = tryExec('clip.mask', { mask: am.dataset.addmask }); if (r) { toast(r); switchTab('props'); } return; }
+  const at = e.target.closest('[data-addtp]'); if (at) { const r = tryExec('text.add', { preset: at.dataset.addtp }); if (r) { toast(r); switchTab('props'); } return; }
   const a = e.target.closest('[data-add]'); if (a) { const r = tryExec('media.place', { mediaId: a.dataset.add }); if (r) { toast(r); const c = getClip(UI.sel); if (c) seek(c.start); } return; }
   if (e.target.closest('[data-addtext]')) { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); }
 });
 document.querySelector('.bin-p').addEventListener('dblclick', e => {
+  if (e.target.closest('button')) return;
+  const mk = e.target.closest('[data-mask]'); if (mk) { const r = tryExec('clip.mask', { mask: mk.dataset.mask }); if (r) toast(r); return; }
+  const tp = e.target.closest('[data-tp]'); if (tp) { tryExec('text.add', { preset: tp.dataset.tp }); return; }
   const mi = e.target.closest('[data-mid]'); if (mi) tryExec('media.place', { mediaId: mi.dataset.mid });
   else if (e.target.closest('[data-text]')) tryExec('text.add', { text: '在這裡輸入字幕' });
 });
@@ -2184,7 +2926,8 @@ $('heads').addEventListener('click', e => { const b = e.target.closest('[data-mu
 const PROP_MAP = { speed: ['clip.set', v => ({ speed: v })], volume: ['clip.set', v => ({ volume: v / 100 })], fadeIn: ['clip.set', v => ({ fadeIn: v })], fadeOut: ['clip.set', v => ({ fadeOut: v })],
   scale: ['clip.set', v => ({ scale: v })], x: ['clip.set', v => ({ x: v })], y: ['clip.set', v => ({ y: v })], rotation: ['clip.set', v => ({ rotation: v })], opacity: ['clip.set', v => ({ opacity: v })],
   size: ['text.set', v => ({ size: v })], tx: ['text.set', v => ({ x: v })], transDur: ['clip.transition', v => ({ duration: v })], ainDur: ['text.anim', v => ({ inDur: v })], aoutDur: ['text.anim', v => ({ outDur: v })], ty: ['text.set', v => ({ y: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
-  temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })] };
+  temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })],
+  d3depth: ['text.d3', v => ({ depth: v })], feather: ['clip.mask', v => ({ feather: v })], keyAmt: ['clip.key', v => ({ amount: v })] };
 for (const pane of ['pProps', 'pColor']) {
   $(pane).addEventListener('input', e => {
     const k = e.target.dataset.k, id = UI.sel;
@@ -2196,6 +2939,9 @@ for (const pane of ['pProps', 'pColor']) {
     else if (e.target.id === 'f_gtitle') tryExec('gen.set', { clipId: id, title: e.target.value }, { coalesce: 'gt' + id, light: true });
     else if (e.target.id === 'f_gsub') tryExec('gen.set', { clipId: id, sub: e.target.value }, { coalesce: 'gs' + id, light: true });
     else if (e.target.id === 'f_gacc') tryExec('gen.set', { clipId: id, accent: e.target.value }, { coalesce: 'ga' + id, light: true });
+    else if (e.target.id === 'f_d3f1') tryExec('text.d3', { clipId: id, face: e.target.value }, { coalesce: 'd3f1' + id, light: true });
+    else if (e.target.id === 'f_d3f2') tryExec('text.d3', { clipId: id, face2: e.target.value }, { coalesce: 'd3f2' + id, light: true });
+    else if (e.target.id === 'f_d3s') tryExec('text.d3', { clipId: id, side: e.target.value }, { coalesce: 'd3s' + id, light: true });
   });
   $(pane).addEventListener('change', e => {
     const id = UI.sel;
@@ -2204,12 +2950,18 @@ for (const pane of ['pProps', 'pColor']) {
     if (e.target.id === 'f_ain') { tryExec('text.anim', { clipId: id, in: e.target.value }); previewAnim(id, 'in'); }
     if (e.target.id === 'f_aout') { tryExec('text.anim', { clipId: id, out: e.target.value }); previewAnim(id, 'out'); }
     if (e.target.dataset.k === 'speed') renderInspector();
+    if (e.target.id === 'f_d3a') { tryExec('text.d3', { clipId: id, anim: e.target.value }); previewD3(id); }
+    if (e.target.id === 'f_mask') tryExec('clip.mask', { clipId: id, mask: e.target.value });
+    if (e.target.id === 'f_minv') tryExec('clip.mask', { clipId: id, invert: e.target.checked });
+    if (e.target.id === 'f_key') tryExec('clip.key', { clipId: id, on: e.target.checked });
   });
   $(pane).addEventListener('click', e => {
     const id = UI.sel, b = e.target.closest('button'); if (!b) return;
     if (b.dataset.look) { tryExec('color.set', { clipId: id, look: b.dataset.look }); return; }
     const seg = b.closest('[data-seg]');
     if (seg && seg.dataset.seg === 'track') { const c = getClip(id); if (c) tryExec('timeline.move', { clipId: id, track: b.dataset.v, start: toSec(c.start) }); return; }
+    if (seg && seg.dataset.seg === 'd3on') { tryExec('text.d3', { clipId: id, on: b.dataset.v === '1' }); if (b.dataset.v === '1') previewD3(id); return; }
+    if (seg && seg.dataset.seg === 'keycolor') { tryExec('clip.key', { clipId: id, color: b.dataset.v }); return; }
     if (seg) { tryExec('text.set', { clipId: id, position: b.dataset.v }); return; }
     const act = b.dataset.act;
     if (act === 'mute') { const c = getClip(id); tryExec('clip.set', { clipId: id, volume: c.volume === 0 ? 1 : 0 }); }
@@ -2220,6 +2972,7 @@ for (const pane of ['pProps', 'pColor']) {
     if (act === 'transPreview') previewTrans(id);
     if (act === 'transAll') { const c = getClip(id); const tr = c?.trans; if (tr && tr.type !== 'none') { const r = tryExec('clip.transition', { all: true, type: tr.type, duration: tr.dur }); if (r) toast(r.replace('設定了', '已套用到')); } else toast('先幫這段選一個轉場'); }
     if (act === 'animPreview') previewAnim(id);
+    if (act === 'd3Preview') previewD3(id);
     if (act === 'animAll') { const c = getClip(id); const a = c?.text?.anim; if (a) { tryExec('text.anim', { all: true, in: a.in, out: a.out, inDur: a.inDur, outDur: a.outDur }); toast('已套用到全部字幕'); } }
     if (act === 'split') tryExec('timeline.split', { clipId: id });
     if (act === 'dup') tryExec('timeline.duplicate', { clipId: id });
@@ -2236,6 +2989,12 @@ function previewAnim(id, which) {
   clearTimeout(previewStop);
   const until = which === 'in' ? Math.min(clipEnd(c), c.start + sec((a.inDur || .6) + 1)) : clipEnd(c);
   previewStop = setTimeout(() => { if (UI.playing && !UI.exporting) { pause(); seek(which === 'in' ? Math.min(until, clipEnd(c) - TPF) : clipEnd(c) - TPF); } }, toSec(until - from) * 1000 + 50);
+}
+function previewD3(id) {        // 從字幕開頭播 2.5 秒，看 3D 進場動畫
+  const c = getClip(id); if (!c) return;
+  seek(c.start); play(); clearTimeout(previewStop);
+  const until = Math.min(clipEnd(c), c.start + sec(2.5));
+  previewStop = setTimeout(() => { if (UI.playing && !UI.exporting) { pause(); seek(Math.min(until, clipEnd(c) - TPF)); } }, toSec(until - c.start) * 1000);
 }
 function previewTrans(id) {
   const c = getClip(id); const w = c && transWindow(c); if (!w) return;
@@ -2321,7 +3080,7 @@ cv.addEventListener('pointerup', endCanvasDrag); cv.addEventListener('pointercan
 // 鍵盤快捷鍵
 document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,select') && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
-  if (!$('exportOv').hidden || !$('keysOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; } return; }
+  if (!$('exportOv').hidden || !$('keysOv').hidden || !$('updOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; $('updOv').hidden = true; } return; }
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   if (mod && k === 'z') { e.preventDefault(); toast(e.shiftKey ? redo() : undo()); return; }
   if (mod && k === 'y') { e.preventDefault(); toast(redo()); return; }
@@ -2345,6 +3104,67 @@ document.addEventListener('keydown', e => {
   }
 });
 window.addEventListener('resize', () => applyFormat());
+
+// ---------- 版本更新 ----------
+// 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
+const APP_VERSION = '1.1.0';
+const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
+function verCmp(a, b) {
+  const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0) ? 1 : -1;
+  return 0;
+}
+const Upd = { info: null, checking: false, notified: false };
+const updAvailable = () => Upd.info?.status === 'ok' && verCmp(Upd.info.latest, Upd.info.current || APP_VERSION) > 0;
+async function checkUpdate(manual = false) {
+  if (Upd.checking) return; Upd.checking = true;
+  if (manual) renderUpd('正在檢查…');
+  try {
+    const api = desktopApi();
+    if (api) Upd.info = await api.check_update();
+    else {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' }); if (!r.ok) throw new Error('HTTP ' + r.status);
+      const j = await r.json(); Upd.info = { status: 'ok', current: APP_VERSION, latest: j.version, notes: (j.notes || []).map(n => '・' + n).join('\n'), date: j.date };
+    }
+  } catch (e) { Upd.info = { status: 'error', message: String(e?.message || e) }; }
+  Upd.checking = false;
+  $('bVer').classList.toggle('has-upd', updAvailable());
+  if (updAvailable() && !Upd.notified && !manual) { Upd.notified = true; toast(`有新版本 v${Upd.info.latest}，按上方「v${APP_VERSION}」就能更新`); }
+  if (!$('updOv').hidden) renderUpd();
+}
+function renderUpd(msg) {
+  const i = Upd.info, api = desktopApi(), cur = (i && i.current) || APP_VERSION;
+  let h = `<p>目前版本：<b>v${esc(cur)}</b>（${api ? 'Windows 11 桌面版' : '線上版'}）</p>`;
+  if (msg) h += `<p class="note">${esc(msg)}</p>`;
+  else if (!i) h += '<p class="note">還沒檢查過更新。</p>';
+  else if (i.status !== 'ok') h += `<p class="note">檢查更新失敗：${esc(i.message || '')}。請確認網路連線後再試一次。</p>`;
+  else if (updAvailable()) h += `<p>有新版本：<b style="color:var(--accent)">v${esc(i.latest)}</b>${i.date ? `（${esc(i.date)}）` : ''}</p>${i.notes ? `<pre class="notes">${esc(i.notes)}</pre>` : ''}
+    <p class="note">${api ? '按「立即更新」會下載新版安裝程式並自動安裝，小柯會先關閉、裝好後自動重新開啟。正在剪的專案請先儲存。' : '按「立即更新」會重新載入頁面換成新版。正在剪的專案請先儲存。'}</p>`;
+  else h += `<p class="note">已經是最新版本${i.latest ? `（最新 v${esc(i.latest)}）` : ''}。</p>`;
+  $('updBody').innerHTML = h; $('updGo').hidden = !updAvailable();
+}
+async function doUpdate() {
+  const api = desktopApi(), i = Upd.info;
+  if (!api) { location.replace(location.pathname + '?v=' + encodeURIComponent(i?.latest || Date.now())); return; }
+  $('updGo').disabled = true; $('updBarWrap').hidden = false; $('updProg').style.width = '0%';
+  const r = await api.install_update(i.url || '', i.latest || '').catch(e => ({ status: 'error', message: String(e) }));
+  if (!r || r.status !== 'ok') { renderUpd('無法開始更新：' + (r?.message || '')); $('updGo').disabled = false; return; }
+  const poll = setInterval(async () => {
+    const s = await api.update_status().catch(() => null); if (!s) return;
+    $('updProg').style.width = (s.pct || 0) + '%';
+    if (s.state === 'downloading') renderUpd(`正在下載新版… ${s.pct || 0}%`);
+    else if (s.state === 'launching') { clearInterval(poll); renderUpd('下載完成，正在開啟安裝程式。小柯會自動關閉，裝好後重新開啟。'); }
+    else if (s.state === 'error') { clearInterval(poll); renderUpd('更新失敗：' + (s.message || '')); $('updGo').disabled = false; }
+  }, 400);
+}
+$('bVer').textContent = 'v' + APP_VERSION;
+$('bVer').onclick = () => { $('updOv').hidden = false; renderUpd(); checkUpdate(true); };
+$('updClose').onclick = () => { $('updOv').hidden = true; };
+$('updCheck').onclick = () => checkUpdate(true);
+$('updGo').onclick = doUpdate;
+window.addEventListener('pywebviewready', () => setTimeout(() => checkUpdate(false), 1500));
+setTimeout(() => { if (!window.pywebview) checkUpdate(false); }, 2500);
+setInterval(() => { if (!UI.exporting) checkUpdate(false); }, 30 * 60 * 1000);
 
 // ---------- 範例專案（開啟時的初始狀態，可直接刪除） ----------
 function demo() {

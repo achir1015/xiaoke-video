@@ -5,7 +5,7 @@ python -m pip install -r requirements.txt
 # 準備網頁資源
 Remove-Item -Recurse -Force web -ErrorAction SilentlyContinue
 New-Item -ItemType Directory web | Out-Null
-Copy-Item ..\index.html web\
+Copy-Item ..\index.html, ..\version.json web\
 Copy-Item ..\favicon.svg, ..\favicon-32.png, ..\favicon-16.png, ..\apple-touch-icon.png, ..\manifest.webmanifest web\
 Copy-Item -Recurse ..\icons web\icons
 # 打包成資料夾版執行檔
@@ -15,5 +15,6 @@ python -m PyInstaller --noconfirm --clean --windowed --name XiaokeVideo --icon a
 $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe") |
   Where-Object { Test-Path $_ } | Select-Object -First 1
 if (-not $iscc) { choco install innosetup -y --no-progress; $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" }
-& $iscc installer.iss
+$ver = (Get-Content ..\version.json -Raw -Encoding utf8 | ConvertFrom-Json).version
+& $iscc "/DAppVer=$ver" installer.iss
 Write-Host "完成：..\dist-installer"

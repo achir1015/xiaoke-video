@@ -6,6 +6,7 @@
   AppInfo        應用程式的名稱、版本、資料夾位置
   SaveSession    一次「另存新檔」的過程（網頁把影片分段傳過來，Python 寫進檔案）
   DesktopBridge  網頁可以呼叫的 Python 功能（window.pywebview.api.xxx）
+  Updater        版本更新：查 GitHub Releases 最新版、下載安裝程式、交給它安裝後自動重開
   SelfTest       安裝後自動測試：開啟 App、操作剪輯指令、匯出一小段影片、截圖、寫出報告
   main()         啟動視窗
 
@@ -16,18 +17,33 @@
 import base64
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 import traceback
+import urllib.request
 import uuid
 from pathlib import Path
 
 import webview
 
 APP_NAME = "小柯影音剪輯助手"
-APP_VERSION = "1.0.3"
+GITHUB_REPO = "achir1015/xiaoke-video"
 HTTP_PORT = 48123  # 固定埠號，讓瀏覽器儲存的偏好設定每次開啟都還在
+
+
+def _bundled_version() -> str:
+    """版本號只寫在 version.json（建置時和網頁一起放進 web 資料夾）。"""
+    base = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent))
+    try:
+        return json.loads((base / "web" / "version.json").read_text(encoding="utf-8"))["version"]
+    except Exception:
+        return "0.0.0"
+
+
+APP_VERSION = _bundled_version()
 
 
 class AppInfo:
@@ -96,10 +112,21 @@ class DesktopBridge:
     def __init__(self):
         self._window = None
         self._sessions: dict[str, SaveSession] = {}
+        self._updater = Updater()
         self.forced_save_dir: Path | None = None  # 自我測試時不跳對話框，直接存到這裡
 
     def attach(self, window):
         self._window = window
+        self._updater.window = window
+
+    def check_update(self):
+        return self._updater.check()
+
+    def install_update(self, url: str, version: str):
+        return self._updater.install(str(url), str(version))
+
+    def update_status(self):
+        return self._updater.status
 
     def app_info(self):
         return {"name": APP_NAME, "version": APP_VERSION, "platform": sys.platform,
@@ -146,6 +173,66 @@ class DesktopBridge:
             target = target.parent
         os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
         return True
+
+
+class Updater:
+    """版本更新：問 GitHub 最新版本 → 下載安裝程式 → 交給它安裝（裝好會自動重開），App 自己先關閉。"""
+
+    API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
+    DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
+
+    def __init__(self):
+        self.window = None
+        self.status = {"state": "idle", "pct": 0}
+
+    def check(self):
+        try:
+            req = urllib.request.Request(self.API, headers={"Accept": "application/vnd.github+json", "User-Agent": "XiaokeVideo/" + APP_VERSION})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                rel = json.load(r)
+            asset = next((a for a in rel.get("assets", []) if a.get("name", "").lower().endswith(".exe")), None)
+            notes = (rel.get("body") or "").split("## 下載安裝")[0].strip()   # 只留「更新內容」，安裝說明不顯示
+            return {"status": "ok", "current": APP_VERSION, "latest": str(rel.get("tag_name", "")).lstrip("vV"),
+                    "notes": notes, "date": (rel.get("published_at") or "")[:10],
+                    "url": asset["browser_download_url"] if asset else "", "page": rel.get("html_url", "")}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def install(self, url: str, version: str):
+        if not url.startswith(self.DOWNLOAD_PREFIX):   # 只接受本專案 Releases 的安裝檔
+            return {"status": "error", "message": "更新網址不正確"}
+        if self.status["state"] in ("downloading", "launching"):
+            return {"status": "ok"}
+        self.status = {"state": "downloading", "pct": 0}
+        threading.Thread(target=self._run, args=(url, version), daemon=True).start()
+        return {"status": "ok"}
+
+    def _run(self, url: str, version: str):
+        try:
+            name = "".join(ch for ch in f"XiaokeVideo-Setup-{version}.exe" if ch not in '\\/:*?"<>|')
+            dest = Path(tempfile.gettempdir()) / name
+            req = urllib.request.Request(url, headers={"User-Agent": "XiaokeVideo/" + APP_VERSION})
+            with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as fh:
+                total, done = int(r.headers.get("Content-Length") or 0), 0
+                while chunk := r.read(256 * 1024):
+                    fh.write(chunk)
+                    done += len(chunk)
+                    if total:
+                        self.status = {"state": "downloading", "pct": int(done * 100 / total)}
+            if dest.stat().st_size < 1_000_000:
+                raise RuntimeError("下載的安裝檔不完整")
+            self.status = {"state": "launching", "pct": 100}
+            # /relaunch=1：安裝程式裝完後自動重新開啟小柯（見 installer.iss）
+            subprocess.Popen([str(dest), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/relaunch=1"],
+                             creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
+            time.sleep(1.5)
+            try:
+                self.window.destroy()
+            finally:
+                time.sleep(.5)
+                os._exit(0)
+        except Exception as e:
+            self.status = {"state": "error", "pct": 0, "message": str(e)}
 
 
 class DisplayScale:
@@ -199,6 +286,11 @@ class SelfTest:
       step('全部轉場', () => exec('clip.transition', { all: true, type: 'crossfade', duration: 1 }));
       step('分割', () => { seek(sec(2)); return exec('timeline.split', {}); });
       step('復原／重做', () => undo() + '／' + redo());
+      step('新素材庫數量', () => { const n = k => [...Media.values()].filter(m => m.cat === k).length; const s = `蒙版${MASKS.length} 綠幕${n('green')} 配樂${n('music')} 字幕樣式${TEXT_PRESETS.length}`; if (MASKS.length !== 30 || n('green') !== 20 || n('music') !== 110 || TEXT_PRESETS.length !== 12) throw new Error(s); return s; });
+      step('綠幕自動去背', () => { seek(sec(1)); const r = exec('media.place', { mediaId: 'gs3' }); if (!getClip(UI.sel).key?.on) throw new Error('沒有自動開啟去背'); draw(sec(1.5)); return r; });
+      step('蒙版', () => { const r = exec('clip.mask', { clipId: UI.sel, mask: 'heart', feather: 10 }); draw(sec(1.5)); return r; });
+      step('3D 立體字幕', () => { const r = exec('text.add', { text: '3D 測試', start: 1, preset: 'td3' }); draw(sec(2)); return r; });
+      step('網頁版本號', () => APP_VERSION);
       step('畫面合成', () => { draw(sec(2)); const p = ctx.getImageData(cv.width / 2, cv.height / 2, 1, 1).data; return [...p].join(','); });
       step('錄影格式', () => { const ok = MIMES.filter(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m[0])).map(m => m[1]); if (!ok.length) throw new Error('不支援錄影'); return ok.join('、'); });
       step('桌面存檔通道', () => { if (!(window.pywebview && window.pywebview.api && window.pywebview.api.begin_save)) throw new Error('沒有連上 Python'); return 'OK'; });
@@ -213,7 +305,9 @@ class SelfTest:
       doc.clips = []; UI.sel = null;
       exec('media.place', { mediaId: 'g1' });
       exec('timeline.trim', { clipId: UI.sel, end: 2 });
-      exec('text.add', { text: '匯出測試', start: 0, duration: 2 });
+      exec('text.add', { text: '匯出測試', start: 0, duration: 2, preset: 'td1' });
+      exec('media.place', { mediaId: 'mu_happy0', track: 'A2', start: 0 });   // 程式合成的配樂也要錄進影片
+      exec('timeline.trim', { clipId: UI.sel, end: 2 });
       openExport();
       window.__kkTest = { state: 'running' };
       startExport().catch(e => { window.__kkTest = { state: 'error', msg: String(e) }; });
@@ -251,7 +345,7 @@ class SelfTest:
             self.screenshot("selftest-editor.png")
             self.window.evaluate_js(self.JS_EXPORT_START)
             state = {}
-            for _ in range(90):  # 最多等 45 秒
+            for _ in range(180):  # 最多等 90 秒（含產生配樂）
                 time.sleep(0.5)
                 state = self.window.evaluate_js("window.__kkTest") or {}
                 if state.get("state") in ("done", "error"):
@@ -260,7 +354,10 @@ class SelfTest:
             exported = Path(state.get("path") or "")
             report["export_file_ok"] = bool(state.get("state") == "done" and exported.is_file() and exported.stat().st_size > 1000)
             self.screenshot("selftest-export.png")
-            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"])
+            # 網頁和程式的版本號要一致；更新檢查只記錄結果（沒網路時不算失敗）
+            report["version_match"] = self.window.evaluate_js("APP_VERSION") == APP_VERSION
+            report["update_check"] = self.bridge.check_update()
+            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"])
         except Exception:
             report["error"] = traceback.format_exc()
         finally:

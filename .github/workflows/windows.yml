@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['index.html', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
+    paths: ['index.html', 'version.json', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
   workflow_dispatch:
 
 permissions:
@@ -24,8 +24,14 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $v = (Get-Content windows\VERSION -Raw).Trim()
+          # 版本號只寫在 version.json；index.html 的 APP_VERSION 必須一致
+          $j = Get-Content version.json -Raw -Encoding utf8 | ConvertFrom-Json
+          $v = $j.version
+          if (-not (Select-String -Path index.html -SimpleMatch "const APP_VERSION = '$v';" -Quiet)) { throw "index.html 的 APP_VERSION 和 version.json（$v）不一致" }
           "ver=$v" >> $env:GITHUB_OUTPUT
+          # 發佈說明 = 這一版更新內容 + 安裝說明
+          $body = "## v$v 更新內容`n`n" + (($j.notes | ForEach-Object { "- $_" }) -join "`n") + "`n`n" + (Get-Content windows\RELEASE_NOTES.md -Raw -Encoding utf8)
+          Set-Content release-body.md $body -Encoding utf8
 
       - name: 安裝 Python 套件
         working-directory: windows
@@ -36,7 +42,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory web | Out-Null
-          Copy-Item ..\index.html web\
+          Copy-Item ..\index.html, ..\version.json web\
           Copy-Item ..\favicon.svg, ..\favicon-32.png, ..\favicon-16.png, ..\apple-touch-icon.png, ..\manifest.webmanifest web\
           Copy-Item -Recurse ..\icons web\icons
 
@@ -117,7 +123,7 @@ jobs:
           target_commitish: ${{ github.sha }}
           make_latest: true
           name: 小柯影音剪輯助手 v${{ steps.ver.outputs.ver }}（Windows 11）
-          body_path: windows/RELEASE_NOTES.md
+          body_path: release-body.md
           files: |
             dist-installer/*.exe
             selftest-report.json

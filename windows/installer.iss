@@ -30,6 +30,9 @@ WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 MinVersion=10.0.17763
+; App 內「立即更新」執行新版安裝程式時，舊版可能還沒完全關閉：自動關掉它再覆蓋
+CloseApplications=force
+RestartApplications=no
 
 [Languages]
 #ifexist "ChineseTraditional.isl"
@@ -58,8 +61,15 @@ Name: "{autodesktop}\{#AppName}"; Filename: "{app}\{#AppExe}"; Tasks: desktopico
 
 [Run]
 Filename: "{app}\{#AppExe}"; Description: "立即啟動 {#AppName}"; Flags: nowait postinstall skipifsilent
+; App 內更新時以 /relaunch=1 執行，裝好後自動重新開啟
+Filename: "{app}\{#AppExe}"; Flags: nowait; Check: ShouldRelaunch
 
 [Code]
+function ShouldRelaunch(): Boolean;
+begin
+  Result := ExpandConstant('{param:relaunch|0}') = '1';
+end;
+
 // Windows 11 內建 WebView2；舊電腦沒有時提醒使用者安裝
 function WebView2Installed(): Boolean;
 var v: String;
