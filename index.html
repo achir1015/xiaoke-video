@@ -274,7 +274,7 @@ textarea{resize:vertical;width:100%}
         </div>
         <div id="bt-intro" hidden><p class="note">按「＋」放到影片最前面（其他片段自動往後移）。標題文字和主色可以在右邊修改。</p><div class="bin" id="binIntro"></div></div>
         <div id="bt-outro" hidden><p class="note">按「＋」接在 V1 主畫面最後。</p><div class="bin" id="binOutro"></div></div>
-        <div id="bt-sticker" hidden><p class="note">按「＋」貼到 V2 疊加軌的播放頭位置，再到監看畫面上拖曳擺位、用「縮放」調大小。</p><div class="bin bin3" id="binSticker"></div></div>
+        <div id="bt-sticker" hidden><p class="note">按「＋」貼到播放頭位置（自動放進空著的 V2／V3／V4 疊加軌，最多同時疊三個），再到監看畫面上拖曳擺位、用「縮放」調大小。</p><div class="bin bin3" id="binSticker"></div></div>
         <div id="bt-basic" hidden><div class="bin" id="binGen"></div></div>
         <div class="bin-sec">字幕檔</div>
         <div class="row2">
@@ -422,13 +422,22 @@ const TRACKS = [
   { id: 'T3', kind: 'text', label: '字幕 3' },
   { id: 'T2', kind: 'text', label: '字幕 2' },
   { id: 'T1', kind: 'text', label: '字幕 1' },
-  { id: 'V2', kind: 'video', label: '疊加畫面' },
+  { id: 'V4', kind: 'video', label: '疊加 3' },
+  { id: 'V3', kind: 'video', label: '疊加 2' },
+  { id: 'V2', kind: 'video', label: '疊加 1' },
   { id: 'V1', kind: 'video', label: '主畫面' },
   { id: 'A1', kind: 'audio', label: '音訊' },
   { id: 'A2', kind: 'audio', label: '配樂' },
 ];
 const trackKind = id => (TRACKS.find(t => t.id === id) || {}).kind;
-const TEXT_TRACKS = ['T1', 'T2', 'T3'];        // 畫面疊放順序：T1 在下、T3 在最上
+const TEXT_TRACKS = ['T1', 'T2', 'T3'];
+const VIDEO_TRACKS = ['V1', 'V2', 'V3', 'V4'];   // 畫面疊放順序：V1 在最下、V4 在最上
+const OVERLAY_TRACKS = ['V2', 'V3', 'V4'];
+// 找一條在 [s,e) 期間空著的疊加軌；都被佔用就用 V2（覆蓋）
+function freeOverlayTrack(s, e) {
+  for (const tr of OVERLAY_TRACKS) if (!doc.clips.some(c => c.track === tr && c.start < e && clipEnd(c) > s)) return tr;
+  return 'V2';
+}        // 畫面疊放順序：T1 在下、T3 在最上
 const POS_Y = { top: 12, center: 50, bottom: 88 };   // 上／中／下 快速定位（文字區塊中心點，畫面高度 %）
 // 找一條在 [s,e) 期間沒有字幕的軌道；都被佔用就用 T1（覆蓋）
 function freeTextTrack(s, e) {
@@ -464,7 +473,7 @@ const GENS = [
 let doc = {
   name: '範例專案',
   format: 'hd720',
-  tracks: { T3: { muted: false }, T2: { muted: false }, T1: { muted: false }, V2: { muted: false }, V1: { muted: false }, A1: { muted: false }, A2: { muted: false } },
+  tracks: { T3: { muted: false }, T2: { muted: false }, T1: { muted: false }, V4: { muted: false }, V3: { muted: false }, V2: { muted: false }, V1: { muted: false }, A1: { muted: false }, A2: { muted: false } },
   clips: [],
   nextId: 1,
 };
@@ -648,7 +657,7 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
     doc.clips.push(c); UI.sel = c.id;
     return `${p.mode === 'intro' ? '片頭放在影片最前面' : '片尾接在 V1 最後'}：片段 #${c.id}，${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
   }
-  if (m.cat === 'sticker' && !p.track && !p.mode && p.start == null) { p.track = 'V2'; p.mode = 'overwrite'; }
+  if (m.cat === 'sticker' && !p.track && !p.mode && p.start == null) { p.track = freeOverlayTrack(snapF(UI.playhead), snapF(UI.playhead) + m.dur); p.mode = 'overwrite'; }
   const track = p.track || (m.kind === 'audio' ? 'A1' : 'V1');
   const k = trackKind(track);
   if (!k || (m.kind === 'audio') !== (k === 'audio') || k === 'text') throw new Error(`${m.name} 不能放到 ${track}`);
@@ -1514,8 +1523,8 @@ function draw(t) {
   const W = cv.width, H = cv.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
-  for (const tr of ['V1', 'V2']) {
-    if (doc.tracks[tr].muted) continue;
+  for (const tr of VIDEO_TRACKS) {
+    if (doc.tracks[tr]?.muted) continue;
     const T = activeTransition(tr, t);
     if (T) { drawTransition(T, t); continue; }
     const c = clipAt(tr, t); if (c) drawVisual(c, t);
@@ -1570,6 +1579,7 @@ function loop(now) {
  * 介面：素材箱、時間軸、屬性面板
  * ===================================================================== */
 function changed(light) {
+  for (const t of TRACKS) if (!doc.tracks[t.id]) doc.tracks[t.id] = { muted: false };   // 舊專案補上新軌道
   // 清掉已刪除片段的媒體元素
   const ids = new Set(doc.clips.map(c => c.id));
   for (const id of [...Els.keys()]) if (!ids.has(id)) dropEl(id);
@@ -1599,7 +1609,7 @@ function renderBin() {
   const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
       <div class="th" style="${m.thumb ? `background-image:url(${m.thumb})` : m.kind === 'audio' ? 'background:linear-gradient(135deg,#1e3a30,#3b9372)' : 'background:linear-gradient(135deg,#3a2418,#a8613f)'}">${m.thumb ? '' : (m.icon || '♪')}</div>
       ${m.cat === 'sticker' ? '' : `<span class="kind" style="background:${{ video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${m.cat === 'intro' ? '片頭' : m.cat === 'outro' ? '片尾' : { video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>`}
-      <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到 V2 播放頭位置' : '接在時間軸最後'}">＋</button>
+      <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到播放頭位置的疊加軌' : '接在時間軸最後'}">＋</button>
       <div class="nm">${esc(m.name)}</div><div class="du">${m.kind === 'image' ? '靜態圖片' : fmtDur(m.dur)}</div></div>`;
   $('bin').innerHTML = mine.length ? mine.map(card).join('') : '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>';
   const cat = k => [...Media.values()].filter(m => m.builtin && m.cat === k);
@@ -1707,7 +1717,7 @@ function renderInspector() {
       h += `<div class="sec" id="secTrans"><h4>轉場（從前一段進到這段）<button class="btn ghost" data-act="transPreview" style="padding:2px 6px">▶ 預覽</button></h4>
         <div class="trgrid">${Object.entries(TRANS).map(([k, v]) => `<button class="trb" data-trans="${k}" aria-pressed="${tr.type === k}"><i class="ti ti-${k}"></i>${v.name}</button>`).join('')}</div>
         ${tr.type !== 'none' ? rng('transDur', '轉場秒數', tr.dur, .2, 3, .1, 's') : ''}
-        <p class="note">${A ? `接在「${esc(clipName(A))}」後面。` : '前面沒有緊接的片段，轉場會從黑畫面（或下層畫面）開始。'}在時間軸上點兩段之間的接縫也能設定。</p>
+        <p class="note">${A ? `接在「${esc(clipName(A))}」後面。` : '前面沒有緊接的片段，轉場會從黑畫面（疊加軌則是下層畫面）開始。'}在時間軸上點兩段之間的接縫也能設定。</p>
         <div class="row2"><button class="btn" data-act="transAll">把這個轉場套用到所有剪接點</button></div></div>`;
     }
     h += `<div class="sec"><h4>淡入淡出</h4>${rng('fadeIn', '淡入', c.fadeIn, 0, Math.min(5, toSec(c.dur)), .1, 's')}${rng('fadeOut', '淡出', c.fadeOut, 0, Math.min(5, toSec(c.dur)), .1, 's')}</div>`;
@@ -1740,7 +1750,7 @@ function projectSummary() {
   return {
     畫面: FORMATS[doc.format].join('x'), 總長秒: +toSec(seqDur()).toFixed(2), 播放頭秒: +toSec(UI.playhead).toFixed(2), 選取片段: UI.sel,
     我的素材: [...Media.values()].filter(m => !m.builtin).map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
-    內建素材: Object.fromEntries(['intro', 'outro', 'sticker', 'basic'].map(k => [{ intro: '片頭(用 media.place 會自動放最前面)', outro: '片尾(自動接在最後)', sticker: '圖檔貼圖(自動貼到V2播放頭)', basic: '基本' }[k], [...Media.values()].filter(m => m.builtin && m.cat === k).map(m => m.id + ' ' + m.name).join('、')])),
+    內建素材: Object.fromEntries(['intro', 'outro', 'sticker', 'basic'].map(k => [{ intro: '片頭(用 media.place 會自動放最前面)', outro: '片尾(自動接在最後)', sticker: '圖檔貼圖(自動貼到播放頭位置空著的V2/V3/V4)', basic: '基本' }[k], [...Media.values()].filter(m => m.builtin && m.cat === k).map(m => m.id + ' ' + m.name).join('、')])),
     片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
       clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
       ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y, 動畫: c.text.anim || null } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look, 轉場: c.trans && c.trans.type !== 'none' ? c.trans : null, 接在前一段後面: !!prevAdjacent(c) }),
@@ -1781,7 +1791,7 @@ const KK_RULES = () => `你是「小柯」，「小柯影音剪輯助手」網�
 3. 做完後用繁體中文、一到三句話說明你做了什麼。如果指令失敗，看錯誤訊息調整後再試一次，還是不行就說明原因。
 4. 你看不到畫面也聽不到聲音，所以不能自動聽打字幕；但可以幫忙寫字幕文案、標題、分段建議，並用 captions.addMany 或 text.add 放上去。
 5. 要求不清楚或會刪掉很多東西時，先問一句確認。
-軌道：T1、T2、T3 三條字幕軌（同一時間可以各放一句，T3 疊在最上面；字幕位置用 x、y 百分比），V2 疊加畫面（在 V1 上面），V1 主畫面，A1 音訊，A2 配樂。
+軌道：T1、T2、T3 三條字幕軌（同一時間可以各放一句，T3 疊在最上面；字幕位置用 x、y 百分比），V2、V3、V4 三條疊加軌（V4 在最上層，貼圖會自動找空的疊加軌），V1 主畫面，A1 音訊，A2 配樂。
 可用指令（command：參數說明）：
 ${Object.values(Commands).map(c => `- ${c.id}（${c.label}）：${c.params}`).join('\n')}`;
 async function ask(text) {
