@@ -1982,7 +1982,26 @@ async function startExport() {
 function finishExport() { if (rec && rec.state !== 'inactive') setTimeout(() => rec.stop(), 250); }
 function cancelExport() { recCancel = true; pause(); if (rec && rec.state !== 'inactive') rec.stop(); else { UI.exporting = false; resetExportUI(); } }
 function resetExportUI() { $('exGo').hidden = false; $('exGo').textContent = '重新匯出'; $('exCancel').hidden = true; $('exClose').disabled = false; changed(); }
+// Windows 桌面版（pywebview）：透過 Python 開「另存新檔」對話框，資料分段傳過去
+const blobToB64 = b => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(',')[1] || ''); r.onerror = () => rej(r.error); r.readAsDataURL(b); });
+async function desktopSave(filename, data) {
+  const api = window.pywebview.api;
+  const blob = data instanceof Blob ? data : new Blob([data]);
+  const begin = await api.begin_save(filename);
+  if (!begin || begin.status !== 'ok') { if (begin && begin.status === 'declined') return false; throw new Error(begin?.message || '無法開始存檔'); }
+  const CH = 4 * 1024 * 1024;
+  for (let o = 0; o < blob.size; o += CH) {
+    await api.write_chunk(begin.token, await blobToB64(blob.slice(o, o + CH)));
+    toast(`儲存中… ${Math.min(100, Math.round((o + CH) / blob.size * 100))}%`);
+  }
+  const end = await api.end_save(begin.token);
+  toast('已儲存到：' + end.path);
+  return end.path;
+}
 async function saveFile(filename, data) {
+  if (window.pywebview && window.pywebview.api && window.pywebview.api.begin_save) {
+    try { return await desktopSave(filename, data); } catch (e) { toast('儲存失敗：' + (e?.message || e)); return false; }
+  }
   let dl = null;
   try { dl = window.claude ? await window.claude.use('downloads') : null; } catch { dl = null; }
   if (!dl) {

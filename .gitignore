@@ -1,0 +1,6 @@
+windows/web/
+build/
+dist/
+dist-installer/
+windows/ChineseTraditional.isl
+__pycache__/

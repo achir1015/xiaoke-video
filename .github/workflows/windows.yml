@@ -1,0 +1,107 @@
+name: Windows 版建置與測試
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+    paths: ['index.html', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 版本號
+        id: ver
+        shell: pwsh
+        run: |
+          $v = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '1.0.0' }
+          "ver=$v" >> $env:GITHUB_OUTPUT
+
+      - name: 安裝 Python 套件
+        working-directory: windows
+        run: python -m pip install -r requirements.txt
+
+      - name: 準備網頁資源
+        working-directory: windows
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory web | Out-Null
+          Copy-Item ..\index.html web\
+          Copy-Item ..\favicon.svg, ..\favicon-32.png, ..\favicon-16.png, ..\apple-touch-icon.png, ..\manifest.webmanifest web\
+          Copy-Item -Recurse ..\icons web\icons
+
+      - name: PyInstaller 打包
+        working-directory: windows
+        run: python -m PyInstaller --noconfirm --clean --windowed --name XiaokeVideo --icon app.ico --add-data "web;web" --distpath ..\dist --workpath ..\build app.py
+
+      - name: 製作安裝程式（Inno Setup）
+        working-directory: windows
+        shell: pwsh
+        run: |
+          try { Invoke-WebRequest "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseTraditional.isl" -OutFile ChineseTraditional.isl } catch { Write-Host "中文語系下載失敗，使用英文介面" }
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          & $iscc "/DAppVer=${{ steps.ver.outputs.ver }}" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC 失敗" }
+          Get-ChildItem ..\dist-installer
+
+      - name: 靜默安裝
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem dist-installer\*.exe | Select-Object -First 1
+          $p = Start-Process $setup.FullName -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART','/CURRENTUSER','/DIR="C:\KKTest\小柯影音剪輯助手"','/LOG="C:\KKTest\install.log"' -Wait -PassThru
+          "安裝結束代碼：$($p.ExitCode)"
+          if (-not (Test-Path 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe')) { Get-Content C:\KKTest\install.log -Tail 40; throw '找不到安裝後的執行檔' }
+          Get-ChildItem 'C:\KKTest\小柯影音剪輯助手' | Select-Object Name, Length
+
+      - name: 安裝後自我測試
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory C:\KKTest\out -Force | Out-Null
+          $exe = 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe'
+          $p = Start-Process $exe -ArgumentList '--selftest','C:\KKTest\out\report.json' -PassThru
+          if (-not $p.WaitForExit(180000)) { Stop-Process $p -Force; Write-Host '逾時' }
+          if (-not (Test-Path C:\KKTest\out\report.json)) { throw '沒有產生測試報告' }
+          $r = Get-Content C:\KKTest\out\report.json -Raw -Encoding UTF8
+          Write-Host $r
+          Copy-Item C:\KKTest\out\report.json selftest-report.json
+          $j = $r | ConvertFrom-Json
+          if (-not $j.ok) { throw '自我測試未通過' }
+
+      - name: 解除安裝測試
+        if: always()
+        shell: pwsh
+        run: |
+          $u = 'C:\KKTest\小柯影音剪輯助手\unins000.exe'
+          if (Test-Path $u) { Start-Process $u -ArgumentList '/VERYSILENT','/SUPPRESSMSGBOXES' -Wait; Start-Sleep 3; "解除安裝後執行檔還在嗎：$(Test-Path 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe')" }
+
+      - name: 上傳安裝程式與測試結果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaokeVideo-windows
+          path: |
+            dist-installer/*.exe
+            C:/KKTest/out/*
+            C:/KKTest/install.log
+
+      - name: 發佈到 Releases
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          name: 小柯影音剪輯助手 v${{ steps.ver.outputs.ver }}（Windows 11）
+          body_path: windows/RELEASE_NOTES.md
+          files: |
+            dist-installer/*.exe
+            selftest-report.json
+            C:/KKTest/out/selftest-editor.png
