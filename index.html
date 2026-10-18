@@ -465,6 +465,32 @@ const GENS = [
   { gen: 'bars', name: '彩條', dur: 3, icon: '▥' },
   { gen: 'solid', name: '黑色背景', dur: 3, icon: '■', color: '#000000' },
   { gen: 'solid', name: '白色背景', dur: 3, icon: '□', color: '#ffffff' },
+  // 以下 25 個：去背用色幕、靜態漸層、動態背景（畫法在 BASIC 表）
+  { gen: 'solid', name: '綠幕', dur: 5, color: '#00b140' },
+  { gen: 'solid', name: '藍幕', dur: 5, color: '#0047bb' },
+  { gen: 'lin1', name: '深海藍漸層', dur: 5 },
+  { gen: 'lin2', name: '蜜桃日落漸層', dur: 5 },
+  { gen: 'lin3', name: '粉彩夢幻漸層', dur: 5 },
+  { gen: 'lin4', name: '薄荷清新漸層', dur: 5 },
+  { gen: 'stars', name: '星空', dur: 5 },
+  { gen: 'tech', name: '科技網格', dur: 5 },
+  { gen: 'ocean', name: '海洋波浪', dur: 5 },
+  { gen: 'sunset', name: '夕陽', dur: 5 },
+  { gen: 'paper', name: '紙張橫線', dur: 5 },
+  { gen: 'film', name: '復古膠片顆粒', dur: 5 },
+  { gen: 'neon', name: '霓虹網格', dur: 5 },
+  { gen: 'gold', name: '金色光芒', dur: 5 },
+  { gen: 'pastel', name: '泡泡漂浮', dur: 5 },
+  { gen: 'confetti', name: '彩帶飄落', dur: 5 },
+  { gen: 'hearts', name: '愛心飄浮', dur: 5 },
+  { gen: 'bokeh', name: '散景光斑', dur: 5 },
+  { gen: 'rain', name: '下雨', dur: 5 },
+  { gen: 'snow', name: '下雪', dur: 5 },
+  { gen: 'checker', name: '移動格紋', dur: 5 },
+  { gen: 'stripes', name: '斜條紋', dur: 5 },
+  { gen: 'rays', name: '放射光束', dur: 5 },
+  { gen: 'noise', name: '電視雜訊', dur: 3 },
+  { gen: 'timer', name: '計時器', dur: 10 },
 ];
 
 /* ---------- 文件狀態（可復原的部分） ----------
@@ -1121,6 +1147,50 @@ const STK = [
 ];
 function numBadge(g, n, col) { g.fillStyle = col; g.beginPath(); g.arc(256, 256, 220, 0, Math.PI * 2); g.fill(); g.strokeStyle = '#fff'; g.lineWidth = 18; g.beginPath(); g.arc(256, 256, 190, 0, Math.PI * 2); g.stroke(); g.fillStyle = '#fff'; g.font = `900 270px ${FF}`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(n, 256, 272); }
 
+// ---------- 基本素材：背景畫法 ----------
+const lin = cols => S => { const { g, W, H } = S, gr = g.createLinearGradient(0, 0, W, H); cols.forEach((c, i) => gr.addColorStop(i / (cols.length - 1), c)); g.fillStyle = gr; g.fillRect(0, 0, W, H); };
+const withAcc = (fn, acc) => S => fn(Object.assign(S, { acc }));
+let noiseCv = null;
+const BASIC = {
+  lin1: lin(['#0f2027', '#203a43', '#2c5364']),
+  lin2: lin(['#ff7e5f', '#feb47b']),
+  lin3: lin(['#fbc2eb', '#a6c1ee']),
+  lin4: lin(['#43e97b', '#38f9d7']),
+  stars: S => BG.stars(S),
+  tech: withAcc(S => BG.tech(S), '#00f0ff'),
+  ocean: S => BG.ocean(S),
+  sunset: S => BG.sunset(S),
+  paper: S => BG.paper(S),
+  film: S => BG.film(S),
+  neon: withAcc(S => BG.neon(S), '#ff4fd8'),
+  gold: withAcc(S => { BG.gold(S); DECOR.rays.pre(S); }, '#f3c75f'),
+  pastel: S => BG.pastel(S),
+  confetti: S => { BG.pastel(S); DECOR.confetti.post(S); },
+  hearts: withAcc(S => { BG.pastel(S); DECOR.hearts.post(S); }, '#ff5c8a'),
+  rays: S => { const { g, W, H, t } = S; g.fillStyle = '#1b1035'; g.fillRect(0, 0, W, H); g.save(); g.translate(W / 2, H / 2); g.rotate(t * .3);
+    for (let i = 0; i < 18; i++) { g.rotate(Math.PI / 9); g.fillStyle = `hsla(${i * 20 + t * 40},80%,60%,.55)`; g.beginPath(); g.moveTo(0, 0); g.lineTo(W, -W * .09); g.lineTo(W, W * .09); g.fill(); } g.restore(); },
+  bokeh: S => { const { g, W, H, t } = S; g.fillStyle = '#0b0d14'; g.fillRect(0, 0, W, H); g.globalCompositeOperation = 'lighter';
+    for (let i = 0; i < 34; i++) { const x = (rnd(i) * W + t * W * .02 * (rnd(i + 1) - .5) * 4 + W) % W, y = (rnd(i + 2) * H + Math.sin(t * .6 + i) * H * .03), r = H * (.04 + rnd(i + 3) * .1);
+      const gr = g.createRadialGradient(x, y, 0, x, y, r); const col = `hsla(${30 + rnd(i + 4) * 60},90%,${55 + rnd(i + 5) * 20}%,`; gr.addColorStop(0, col + '.5)'); gr.addColorStop(.7, col + '.25)'); gr.addColorStop(1, col + '0)');
+      g.fillStyle = gr; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill(); } g.globalCompositeOperation = 'source-over'; },
+  rain: S => { const { g, W, H, t } = S; const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#1c2633'); gr.addColorStop(1, '#3a4a5c'); g.fillStyle = gr; g.fillRect(0, 0, W, H);
+    g.strokeStyle = 'rgba(200,220,255,.45)'; g.lineWidth = Math.max(1, H / 600);
+    for (let i = 0; i < 180; i++) { const sp = .9 + rnd(i) * .8, x = rnd(i + 1) * W * 1.1, y = ((rnd(i + 2) + t * sp) % 1) * H * 1.1 - H * .05, l = H * (.03 + rnd(i + 3) * .04); g.beginPath(); g.moveTo(x, y); g.lineTo(x - l * .2, y + l); g.stroke(); } },
+  snow: S => { const { g, W, H, t } = S; const gr = g.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, '#0d1b3e'); gr.addColorStop(1, '#3d5a8a'); g.fillStyle = gr; g.fillRect(0, 0, W, H); g.fillStyle = '#fff';
+    for (let i = 0; i < 170; i++) { const z = .4 + rnd(i) * .6, x = (rnd(i + 1) * W + Math.sin(t * .8 + i) * W * .02 * z), y = ((rnd(i + 2) + t * .08 * z) % 1) * H * 1.05 - H * .02; g.globalAlpha = .5 + z * .5; g.beginPath(); g.arc(x, y, H * .004 * z * 2, 0, Math.PI * 2); g.fill(); } g.globalAlpha = 1; },
+  checker: S => { const { g, W, H, t } = S, s = H / 9, o = (t * s * .6) % (s * 2); for (let x = -s * 2; x < W + s * 2; x += s) for (let y = -s * 2; y < H + s * 2; y += s) { const i = Math.round((x + y) / s); g.fillStyle = i % 2 ? '#2e3a59' : '#3f4f78'; g.fillRect(x + o, y + o * .5, s + 1, s + 1); } },
+  stripes: S => { const { g, W, H, t } = S, w = H / 10; g.fillStyle = '#f0a83a'; g.fillRect(0, 0, W, H); g.save(); g.translate(W / 2, H / 2); g.rotate(-Math.PI / 4); g.fillStyle = '#1b1306';
+    const L = Math.hypot(W, H), o = (t * w) % (w * 2); for (let x = -L; x < L; x += w * 2) g.fillRect(x + o, -L, w, L * 2); g.restore(); },
+  noise: S => { const { g, W, H, t } = S; const nw = 200, nh = Math.max(2, Math.round(200 * H / W)); if (!noiseCv) noiseCv = document.createElement('canvas'); noiseCv.width = nw; noiseCv.height = nh;
+    const n = noiseCv.getContext('2d'), im = n.createImageData(nw, nh), f = Math.floor(t * 30); for (let i = 0; i < nw * nh; i++) { const v = rnd(f * 7919 + i * 13.7) * 255; im.data[i * 4] = im.data[i * 4 + 1] = im.data[i * 4 + 2] = v; im.data[i * 4 + 3] = 255; }
+    n.putImageData(im, 0, 0); g.imageSmoothingEnabled = false; g.drawImage(noiseCv, 0, 0, W, H); g.imageSmoothingEnabled = true; g.fillStyle = 'rgba(0,0,0,.25)'; for (let y = 0; y < H; y += H / 120) g.fillRect(0, y, W, H / 360); },
+  timer: S => { const { g, W, H, t, D } = S; g.fillStyle = '#0c0e11'; g.fillRect(0, 0, W, H); const r = H * .34, k = clamp(t / Math.max(.1, D), 0, 1);
+    g.lineWidth = H * .025; g.strokeStyle = '#2b3138'; g.beginPath(); g.arc(W / 2, H / 2, r, 0, Math.PI * 2); g.stroke(); g.strokeStyle = '#f0a83a'; g.lineCap = 'round'; g.beginPath(); g.arc(W / 2, H / 2, r, -Math.PI / 2, -Math.PI / 2 + k * Math.PI * 2); g.stroke();
+    const left = Math.max(0, D - t), mm = Math.floor(left / 60), ss = Math.floor(left % 60), cs = Math.floor((left % 1) * 100);
+    g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.font = `700 ${H * .16}px "JetBrains Mono",ui-monospace,monospace`; g.fillText(`${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`, W / 2, H / 2 - H * .02);
+    g.font = `500 ${H * .05}px "JetBrains Mono",ui-monospace,monospace`; g.fillStyle = '#8a939c'; g.fillText('.' + String(cs).padStart(2, '0'), W / 2, H / 2 + H * .12); },
+};
+
 // 產生內建素材並放進 Media（縮圖用 16:9 小畫布畫出代表畫面）
 function buildLibrary() {
   const tc = document.createElement('canvas'); tc.width = 320; tc.height = 180; const tg = tc.getContext('2d');
@@ -1129,6 +1199,14 @@ function buildLibrary() {
     try { drawTemplate(tg, 320, 180, tpl.anim === 'roll' ? 3.2 : 2.6, tpl.dur, tpl, null); } catch { }
     Media.set(id, { id, name: tpl.name, kind: 'gen', gen: id, dur: sec(tpl.dur), builtin: true, cat: tpl.out ? 'outro' : 'intro', thumb: tc.toDataURL('image/jpeg', .8) });
   }
+  GENS.forEach((gd, i) => {     // 基本素材縮圖（用同一套 drawGen 畫一格）
+    const m = Media.get('g' + i); if (!m) return;
+    try {
+      const fake = { inPt: 0, start: 0, speed: 1, dur: sec(gd.dur), gen: { kind: gd.gen, color: gd.color } };
+      const cvs = drawGen(fake, sec(gd.gen === 'countdown' ? .4 : 1.6), 320, 180);
+      tg.setTransform(1, 0, 0, 1, 0, 0); tg.clearRect(0, 0, 320, 180); tg.drawImage(cvs, 0, 0); m.thumb = tc.toDataURL('image/jpeg', .8);
+    } catch { }
+  });
   STK.forEach(([name, fn, size, scale], i) => {
     const [w, h] = size || [512, 512], c = document.createElement('canvas'); c.width = w; c.height = h; const g = c.getContext('2d');
     try { fn(g); } catch { }
@@ -1136,7 +1214,6 @@ function buildLibrary() {
     Media.set(id, { id, name, kind: 'image', img: c, w, h, dur: sec(3), builtin: true, cat: 'sticker', defScale: scale || 35, thumb: c.toDataURL('image/png') });
   });
 }
-buildLibrary();
 
 
 /* =====================================================================
@@ -1337,6 +1414,11 @@ function drawGen(c, t, W, H) {
   if (genCv.width !== W || genCv.height !== H) { genCv.width = W; genCv.height = H; }
   const g = genCtx, local = toSec(c.inPt + (t - c.start) * c.speed), k = c.gen?.kind;
   g.save(); g.setTransform(1, 0, 0, 1, 0, 0);
+  if (BASIC[k]) {         // 基本素材（背景）
+    g.clearRect(0, 0, W, H);
+    try { BASIC[k]({ g, W, H, t: local, D: toSec(c.inPt + c.dur * c.speed), acc: '#f0a83a', tw: 0, ty: H / 2, ts: 0 }); } catch { }
+    g.restore(); return genCv;
+  }
   if (TPL[k]) {           // 片頭／片尾範本
     g.clearRect(0, 0, W, H);
     try { drawTemplate(g, W, H, local, toSec(c.inPt + c.dur * c.speed), TPL[k], c.gen); } catch { }
@@ -2264,7 +2346,7 @@ function demo() {
 // ---------- 啟動 ----------
 demo();
 try { const tb = localStorage.getItem('kk-tab'); if (tb) switchTab(tb); } catch { }
-renderBin(); changed(); chatIntro(); updatePlayBtn();
+buildLibrary(); renderBin(); changed(); chatIntro(); updatePlayBtn();
 document.fonts && document.fonts.ready.then(() => { buildLibrary(); renderBin(); renderTimeline(); needDraw = true; });
 try { const bt = localStorage.getItem('kk-bintab'); if (bt) switchBinTab(bt); } catch { }
 requestAnimationFrame(loop);
