@@ -30,9 +30,15 @@ https://github.com/user-attachments/assets/ee6193a8-c1f0-4b6f-aead-5e0764343530
 | 專案 | 儲存／開啟專案檔（.json），重新匯入同名素材會自動接回 |
 | 小柯助手 | 用中文下指令，例如「分割」「全部套用電影青橙」「字幕：今天出發去旅行」「2倍速」；在 Claude 裡開啟時可聽懂完整句子並自動操作時間軸 |
 
-## Windows 11 桌面版
+## 下載與安裝
 
-到 [Releases](https://github.com/achir1015/xiaoke-video/releases) 下載安裝程式，詳見 [windows/README.md](windows/README.md)。
+| 裝置 | 怎麼裝 |
+|---|---|
+| Windows 11 | 到 [Releases](https://github.com/achir1015/xiaoke-video/releases) 下載 `XiaokeVideo-Setup-版本.exe`，詳見 [windows/README.md](windows/README.md) |
+| Mac（MacBook Pro／Air 等） | 到 [Releases](https://github.com/achir1015/xiaoke-video/releases) 下載 `.dmg`：M 系列晶片選 `AppleSilicon`、Intel 處理器選 `Intel`，把 App 拖到「應用程式」；第一次開啟按右鍵 →「打開」（未付費簽章），說明在 [windows/MAC_README.txt](windows/MAC_README.txt) |
+| iPad／iPad Pro | 用 Safari 開啟 https://achir1015.github.io/xiaoke-video/ → 分享 →「加入主畫面」，全螢幕開啟、沒網路也能用；可以用手指拖曳時間軸片段，匯出的影片在「檔案」App |
+
+三個版本功能相同，都有版本更新：右上角版本按鈕出現紅點時按「立即更新」。
 
 ## 使用方式
 

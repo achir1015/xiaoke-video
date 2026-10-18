@@ -252,6 +252,19 @@ textarea{resize:vertical;width:100%}
   .tl-body{grid-template-columns:64px minmax(0,1fr)}
   .head span{display:none}
 }
+/* iPad／觸控螢幕：拖片段、拉播放頭、在監看畫面拖字幕時不要捲動整頁；把手和按鈕放大好點 */
+.clip,.ruler,#cv{touch-action:none}
+.clip,.mi,.mrow,.ruler{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+@media (pointer:coarse){
+  .clip .hd{width:18px}
+  .clip .hd::after{content:'';position:absolute;top:30%;bottom:30%;left:50%;width:3px;margin-left:-1.5px;border-radius:2px;background:#fff9}
+  .mi .add,.mrow .add2{padding:6px 11px;font-size:13px}
+  .mrow .pv{width:36px;height:36px}
+  .btn{padding:8px 12px}
+  .playbtn{width:46px;height:46px}
+  .bintabs button,.mcats button{padding:6px 11px;font-size:12px}
+  .ruler{height:34px}
+}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 
@@ -1319,8 +1332,44 @@ function drawMasked(c, t, mk) {
   sg.restore();
   if (c.mask.invert) { sg.globalCompositeOperation = 'xor'; sg.fillStyle = '#fff'; sg.fillRect(0, 0, W, H); sg.globalCompositeOperation = 'source-over'; }
   const f = (c.mask.feather ?? mk.feather) / 100 * Math.min(geo.dw, geo.dh) * .25;
-  vg.save(); vg.globalCompositeOperation = 'destination-in'; if (f > .5) vg.filter = `blur(${f.toFixed(1)}px)`; vg.drawImage(S, 0, 0); vg.restore();
+  let M = S;
+  if (f > .5 && !CANVAS_FILTER) {     // Safari：用「陰影模糊」做出柔邊（把形狀畫到畫面外，只留下模糊的影子）
+    M = scratch('msb', W, H); const bg = M.getContext('2d'); bg.setTransform(1, 0, 0, 1, 0, 0); bg.clearRect(0, 0, W, H);
+    bg.save(); bg.shadowColor = '#fff'; bg.shadowBlur = f * 2; bg.shadowOffsetX = W * 2; bg.drawImage(S, -W * 2, 0); bg.restore();
+  }
+  vg.save(); vg.globalCompositeOperation = 'destination-in'; if (f > .5 && CANVAS_FILTER) vg.filter = `blur(${f.toFixed(1)}px)`; vg.drawImage(M, 0, 0); vg.restore();
   ctx.drawImage(V, 0, 0);
+}
+
+// ---------- Safari／iPad／Mac 版（WebKit）沒有 canvas filter：調色改用色彩矩陣直接改像素 ----------
+// 實際畫一個紅點套 grayscale 看會不會變灰（有些 WebKit 會記住 filter 的值，但畫的時候不套用）
+const CANVAS_FILTER = (() => { try { const c = document.createElement('canvas'); c.width = c.height = 4; const g = c.getContext('2d'); g.filter = 'grayscale(1)'; g.fillStyle = '#ff0000'; g.fillRect(0, 0, 4, 4); const d = g.getImageData(1, 1, 1, 1).data; return Math.abs(d[0] - d[1]) < 30; } catch { return false; } })();
+// 把 fxFilter 產生的 brightness/contrast/saturate/sepia/grayscale 依序合成一個 3×4 矩陣（每列：r、g、b 係數＋位移）
+function filterMatrix(f) {
+  let M = [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0]];
+  const sat = s => [[.213 + .787 * s, .715 - .715 * s, .072 - .072 * s, 0], [.213 - .213 * s, .715 + .285 * s, .072 - .072 * s, 0], [.213 - .213 * s, .715 - .715 * s, .072 + .928 * s, 0]];
+  for (const [, fn, vs] of String(f).matchAll(/(\w+)\(([\d.]+)\)/g)) {
+    const v = Number(vs), a = 1 - Math.min(1, v);
+    const A = fn === 'brightness' ? [[v, 0, 0, 0], [0, v, 0, 0], [0, 0, v, 0]]
+      : fn === 'contrast' ? [[v, 0, 0, 128 * (1 - v)], [0, v, 0, 128 * (1 - v)], [0, 0, v, 128 * (1 - v)]]
+      : fn === 'saturate' ? sat(v) : fn === 'grayscale' ? sat(1 - Math.min(1, v))
+      : fn === 'sepia' ? [[.393 + .607 * a, .769 - .769 * a, .189 - .189 * a, 0], [.349 - .349 * a, .686 + .314 * a, .168 - .168 * a, 0], [.272 - .272 * a, .534 - .534 * a, .131 + .869 * a, 0]] : null;
+    if (A) M = A.map(r => [0, 1, 2, 3].map(j => r[0] * M[0][j] + r[1] * M[1][j] + r[2] * M[2][j] + (j === 3 ? r[3] : 0)));
+  }
+  return M;
+}
+function colorMatrix(src, sw, sh, f) {
+  const sc = Math.min(1, 1280 / Math.max(sw, sh)), w = Math.max(1, Math.round(sw * sc)), h = Math.max(1, Math.round(sh * sc));
+  const K = scratch('fx', w, h), g = K.getContext('2d', { willReadFrequently: true });
+  g.clearRect(0, 0, w, h); g.drawImage(src, 0, 0, w, h);
+  let im; try { im = g.getImageData(0, 0, w, h); } catch { return null; }
+  const d = im.data, [R, G, B] = filterMatrix(f);
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], gg = d[i + 1], b = d[i + 2];
+    d[i] = R[0] * r + R[1] * gg + R[2] * b + R[3]; d[i + 1] = G[0] * r + G[1] * gg + G[2] * b + G[3]; d[i + 2] = B[0] * r + B[1] * gg + B[2] * b + B[3];
+  }
+  g.putImageData(im, 0, 0);
+  return K;
 }
 
 // ---------- 綠幕去背（色度鍵）：綠色（或藍色）比其他顏色明顯多的像素變透明，邊緣去除溢色 ----------
@@ -2161,12 +2210,14 @@ function drawVisualBody(c, t) {
   if (!src || !sw || !sh) return;
   if (c.key && c.key.on) { const k = chromaKey(src, sw, sh, c.key); if (k) { src = k; sw = k.width; sh = k.height; } }
   const tf = c.tf, fx = c.fx, L = LOOKS[fx.look] || LOOKS.none;
+  let filt = fxFilter(fx);
+  if (filt !== 'none' && !CANVAS_FILTER) { const k = colorMatrix(src, sw, sh, filt); if (k) { src = k; sw = k.width; sh = k.height; } filt = 'none'; }
   const fit = Math.min(W / sw, H / sh) * tf.scale / 100, dw = sw * fit, dh = sh * fit;
   ctx.save();
   ctx.globalAlpha = clamp(tf.opacity / 100 * fadeAt(c, t), 0, 1);
   ctx.translate(W / 2 + tf.x / 100 * W / 2, H / 2 + tf.y / 100 * H / 2);
   ctx.rotate(tf.rot * Math.PI / 180);
-  ctx.filter = fxFilter(fx);
+  ctx.filter = filt;
   ctx.drawImage(src, -dw / 2, -dh / 2, dw, dh);
   ctx.filter = 'none';
   // 色溫與風格色調：用柔光混合疊色
@@ -2920,6 +2971,7 @@ $('inner').addEventListener('pointerup', () => {
   else if (d.mode === 'trimL') tryExec('timeline.trim', { clipId: d.id, start: d.ns });
   else tryExec('timeline.trim', { clipId: d.id, end: d.ne });
 });
+$('inner').addEventListener('pointercancel', () => { if (drag && drag.moved) renderTimeline(); drag = null; });   // 觸控被系統打斷時放棄這次拖曳
 $('heads').addEventListener('click', e => { const b = e.target.closest('[data-mute]'); if (b) tryExec('track.mute', { track: b.dataset.mute, muted: !doc.tracks[b.dataset.mute].muted }); });
 
 // 屬性面板事件（滑桿連續拖動合併成一個復原步驟）
@@ -3107,7 +3159,7 @@ window.addEventListener('resize', () => applyFormat());
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
@@ -3134,18 +3186,22 @@ async function checkUpdate(manual = false) {
 }
 function renderUpd(msg) {
   const i = Upd.info, api = desktopApi(), cur = (i && i.current) || APP_VERSION;
-  let h = `<p>目前版本：<b>v${esc(cur)}</b>（${api ? 'Windows 11 桌面版' : '線上版'}）</p>`;
+  const mac = i?.platform === 'mac';
+  let h = `<p>目前版本：<b>v${esc(cur)}</b>（${api ? (mac ? 'Mac 桌面版' : 'Windows 11 桌面版') : '線上版'}）</p>`;
   if (msg) h += `<p class="note">${esc(msg)}</p>`;
   else if (!i) h += '<p class="note">還沒檢查過更新。</p>';
   else if (i.status !== 'ok') h += `<p class="note">檢查更新失敗：${esc(i.message || '')}。請確認網路連線後再試一次。</p>`;
   else if (updAvailable()) h += `<p>有新版本：<b style="color:var(--accent)">v${esc(i.latest)}</b>${i.date ? `（${esc(i.date)}）` : ''}</p>${i.notes ? `<pre class="notes">${esc(i.notes)}</pre>` : ''}
-    <p class="note">${api ? '按「立即更新」會下載新版安裝程式並自動安裝，小柯會先關閉、裝好後自動重新開啟。正在剪的專案請先儲存。' : '按「立即更新」會重新載入頁面換成新版。正在剪的專案請先儲存。'}</p>`;
+    <p class="note">${!api ? '按「立即更新」會重新載入頁面換成新版。正在剪的專案請先儲存。' : mac ? '按「立即更新」會下載新版安裝映像（.dmg）並打開，再把 App 拖到「應用程式」取代舊版即可。正在剪的專案請先儲存。' : '按「立即更新」會下載新版安裝程式並自動安裝，小柯會先關閉、裝好後自動重新開啟。正在剪的專案請先儲存。'}</p>`;
   else h += `<p class="note">已經是最新版本${i.latest ? `（最新 v${esc(i.latest)}）` : ''}。</p>`;
   $('updBody').innerHTML = h; $('updGo').hidden = !updAvailable();
 }
 async function doUpdate() {
   const api = desktopApi(), i = Upd.info;
-  if (!api) { location.replace(location.pathname + '?v=' + encodeURIComponent(i?.latest || Date.now())); return; }
+  if (!api) {
+    try { const reg = await navigator.serviceWorker?.getRegistration(); await reg?.update(); } catch { }
+    location.replace(location.pathname + '?v=' + encodeURIComponent(i?.latest || Date.now())); return;
+  }
   $('updGo').disabled = true; $('updBarWrap').hidden = false; $('updProg').style.width = '0%';
   const r = await api.install_update(i.url || '', i.latest || '').catch(e => ({ status: 'error', message: String(e) }));
   if (!r || r.status !== 'ok') { renderUpd('無法開始更新：' + (r?.message || '')); $('updGo').disabled = false; return; }
@@ -3154,6 +3210,7 @@ async function doUpdate() {
     $('updProg').style.width = (s.pct || 0) + '%';
     if (s.state === 'downloading') renderUpd(`正在下載新版… ${s.pct || 0}%`);
     else if (s.state === 'launching') { clearInterval(poll); renderUpd('下載完成，正在開啟安裝程式。小柯會自動關閉，裝好後重新開啟。'); }
+    else if (s.state === 'manual') { clearInterval(poll); renderUpd('下載完成，已打開安裝映像（.dmg）。請先結束小柯，再把「小柯影音剪輯助手」拖到「應用程式」資料夾取代舊版，然後重新開啟。'); }
     else if (s.state === 'error') { clearInterval(poll); renderUpd('更新失敗：' + (s.message || '')); $('updGo').disabled = false; }
   }, 400);
 }
@@ -3163,6 +3220,8 @@ $('updClose').onclick = () => { $('updOv').hidden = true; };
 $('updCheck').onclick = () => checkUpdate(true);
 $('updGo').onclick = doUpdate;
 window.addEventListener('pywebviewready', () => setTimeout(() => checkUpdate(false), 1500));
+// 線上版（含 iPad「加入主畫面」）註冊離線快取；桌面版和本機預覽不需要
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
 setTimeout(() => { if (!window.pywebview) checkUpdate(false); }, 2500);
 setInterval(() => { if (!UI.exporting) checkUpdate(false); }, 30 * 60 * 1000);
 

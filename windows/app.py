@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-小柯影音剪輯助手 — Windows 11 桌面版
+小柯影音剪輯助手 — 桌面版（Windows 11 與 macOS 共用這支程式）
 
 架構（以領域來切分）：
   AppInfo        應用程式的名稱、版本、資料夾位置
@@ -17,6 +17,7 @@
 import base64
 import json
 import os
+import platform
 import subprocess
 import sys
 import tempfile
@@ -44,6 +45,9 @@ def _bundled_version() -> str:
 
 
 APP_VERSION = _bundled_version()
+IS_MAC = sys.platform == "darwin"
+# Mac 版有 Apple 晶片與 Intel 兩種安裝檔（檔名裡的標記）
+MAC_ARCH = "AppleSilicon" if IS_MAC and platform.machine() == "arm64" else "Intel"
 
 
 class AppInfo:
@@ -60,15 +64,18 @@ class AppInfo:
 
     @staticmethod
     def data_dir() -> Path:
-        base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+        if IS_MAC:
+            base = Path.home() / "Library" / "Application Support"
+        else:
+            base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
         d = base / "XiaokeVideo"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
     @staticmethod
     def default_save_dir() -> Path:
-        # 預設存到「影片\小柯影音剪輯助手」
-        d = Path.home() / "Videos" / APP_NAME
+        # 預設存到「影片\小柯影音剪輯助手」（Mac 是「影片（Movies）/小柯影音剪輯助手」）
+        d = Path.home() / ("Movies" if IS_MAC else "Videos") / APP_NAME
         try:
             d.mkdir(parents=True, exist_ok=True)
         except OSError:
@@ -171,12 +178,21 @@ class DesktopBridge:
         target = Path(path) if path else AppInfo.default_save_dir()
         if target.is_file():
             target = target.parent
-        os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
+        if IS_MAC:
+            subprocess.Popen(["open", str(target)])
+        else:
+            os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
         return True
 
 
 class Updater:
-    """版本更新：問 GitHub 最新版本 → 下載安裝程式 → 交給它安裝（裝好會自動重開），App 自己先關閉。"""
+    """版本更新：問 GitHub 最新版本 → 下載安裝程式 → 交給它安裝（裝好會自動重開），App 自己先關閉。
+    Mac：下載對應晶片的 .dmg 並打開，使用者把 App 拖進「應用程式」覆蓋舊版（未簽章的 App 無法自動替換）。"""
+
+    @staticmethod
+    def wanted(name: str) -> bool:
+        n = name.lower()
+        return n.endswith(".dmg") and MAC_ARCH.lower() in n if IS_MAC else n.endswith(".exe")
 
     API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
     DOWNLOAD_PREFIX = f"https://github.com/{GITHUB_REPO}/releases/download/"
@@ -190,9 +206,9 @@ class Updater:
             req = urllib.request.Request(self.API, headers={"Accept": "application/vnd.github+json", "User-Agent": "XiaokeVideo/" + APP_VERSION})
             with urllib.request.urlopen(req, timeout=15) as r:
                 rel = json.load(r)
-            asset = next((a for a in rel.get("assets", []) if a.get("name", "").lower().endswith(".exe")), None)
+            asset = next((a for a in rel.get("assets", []) if self.wanted(a.get("name", ""))), None)
             notes = (rel.get("body") or "").split("## 下載安裝")[0].strip()   # 只留「更新內容」，安裝說明不顯示
-            return {"status": "ok", "current": APP_VERSION, "latest": str(rel.get("tag_name", "")).lstrip("vV"),
+            return {"status": "ok", "current": APP_VERSION, "platform": "mac" if IS_MAC else "windows", "latest": str(rel.get("tag_name", "")).lstrip("vV"),
                     "notes": notes, "date": (rel.get("published_at") or "")[:10],
                     "url": asset["browser_download_url"] if asset else "", "page": rel.get("html_url", "")}
         except Exception as e:
@@ -209,7 +225,8 @@ class Updater:
 
     def _run(self, url: str, version: str):
         try:
-            name = "".join(ch for ch in f"XiaokeVideo-Setup-{version}.exe" if ch not in '\\/:*?"<>|')
+            name = url.rsplit("/", 1)[-1] or f"XiaokeVideo-Setup-{version}.exe"
+            name = "".join(ch for ch in name if ch not in '\\/:*?"<>|')
             dest = Path(tempfile.gettempdir()) / name
             req = urllib.request.Request(url, headers={"User-Agent": "XiaokeVideo/" + APP_VERSION})
             with urllib.request.urlopen(req, timeout=60) as r, open(dest, "wb") as fh:
@@ -221,6 +238,10 @@ class Updater:
                         self.status = {"state": "downloading", "pct": int(done * 100 / total)}
             if dest.stat().st_size < 1_000_000:
                 raise RuntimeError("下載的安裝檔不完整")
+            if IS_MAC:
+                subprocess.Popen(["open", str(dest)])   # 掛載 .dmg，出現「拖到應用程式」視窗
+                self.status = {"state": "manual", "pct": 100}
+                return
             self.status = {"state": "launching", "pct": 100}
             # /relaunch=1：安裝程式裝完後自動重新開啟小柯（見 installer.iss）
             subprocess.Popen([str(dest), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/relaunch=1"],
@@ -405,14 +426,16 @@ def main():
     tester = SelfTest(window, bridge, selftest_path) if selftest_path is not None else None
 
     def on_start():
-        DisplayScale.fit(window)
+        if not IS_MAC:
+            DisplayScale.fit(window)
         if tester:
             threading.Thread(target=tester.run, daemon=True).start()
 
     func = on_start
 
+    # Windows 用 Edge WebView2；Mac 用系統內建的 WebKit（和 Safari 同一個引擎）
     webview.start(
-        func, gui="edgechromium", http_server=True, http_port=HTTP_PORT,
+        func, gui=None if IS_MAC else "edgechromium", http_server=True, http_port=HTTP_PORT,
         private_mode=False, storage_path=str(AppInfo.data_dir() / "webview"),
         debug=False,
     )

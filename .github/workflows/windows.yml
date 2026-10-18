@@ -1,10 +1,10 @@
-name: Windows 版建置與測試
+name: 建置與測試（Windows／Mac）
 
 on:
   push:
     branches: [main]
     tags: ['v*']
-    paths: ['index.html', 'version.json', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
+    paths: ['index.html', 'version.json', 'sw.js', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
   workflow_dispatch:
 
 permissions:
@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   build-test:
+    name: Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -25,13 +26,9 @@ jobs:
         shell: pwsh
         run: |
           # 版本號只寫在 version.json；index.html 的 APP_VERSION 必須一致
-          $j = Get-Content version.json -Raw -Encoding utf8 | ConvertFrom-Json
-          $v = $j.version
+          $v = (Get-Content version.json -Raw -Encoding utf8 | ConvertFrom-Json).version
           if (-not (Select-String -Path index.html -SimpleMatch "const APP_VERSION = '$v';" -Quiet)) { throw "index.html 的 APP_VERSION 和 version.json（$v）不一致" }
           "ver=$v" >> $env:GITHUB_OUTPUT
-          # 發佈說明 = 這一版更新內容 + 安裝說明
-          $body = "## v$v 更新內容`n`n" + (($j.notes | ForEach-Object { "- $_" }) -join "`n") + "`n`n" + (Get-Content windows\RELEASE_NOTES.md -Raw -Encoding utf8)
-          Set-Content release-body.md $body -Encoding utf8
 
       - name: 安裝 Python 套件
         working-directory: windows
@@ -73,7 +70,6 @@ jobs:
           $ok = Test-Path "$dir\XiaokeVideo.exe"
           Note '安裝結果' "結束代碼 $($p.ExitCode)；執行檔存在：$ok"
           if (-not $ok) { if (Test-Path C:\KKTest\install.log) { Note '安裝紀錄' (Get-Content C:\KKTest\install.log -Tail 40) }; throw '找不到安裝後的執行檔' }
-          Note '安裝內容' (Get-ChildItem $dir | Select-Object Name, Length | Format-Table | Out-String)
 
       - name: 安裝後自我測試
         shell: pwsh
@@ -85,8 +81,7 @@ jobs:
           if (-not $p.WaitForExit(240000)) { Stop-Process $p -Force; Note '自我測試' '逾時 240 秒' }
           if (-not (Test-Path C:\KKTest\out\report.json)) { Note '自我測試' "沒有產生報告；結束代碼 $($p.ExitCode)"; throw '沒有產生測試報告' }
           $r = Get-Content C:\KKTest\out\report.json -Raw -Encoding UTF8
-          Note '自我測試報告' $r
-          Copy-Item C:\KKTest\out\report.json selftest-report.json
+          Note '自我測試報告（Windows）' $r
           $j = $r | ConvertFrom-Json
           if (-not $j.ok) { throw '自我測試未通過' }
 
@@ -115,17 +110,130 @@ jobs:
             dist-installer/*.exe
             test-output/
 
-      - name: 發佈到 Releases（測試全部通過才會發佈）
-        if: success() && github.ref == 'refs/heads/main'
-        uses: softprops/action-gh-release@v2
+  mac:
+    name: Mac（${{ matrix.arch }}）
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, arch: AppleSilicon }
+          - { os: macos-15-intel, arch: Intel }
+    runs-on: ${{ matrix.os }}
+    # GitHub 的 Intel Mac 機器逐步淘汰：Intel 版失敗時不擋住發佈
+    continue-on-error: ${{ matrix.arch == 'Intel' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: 版本號
+        id: ver
+        run: echo "ver=$(python -c 'import json;print(json.load(open("version.json"))["version"])')" >> "$GITHUB_OUTPUT"
+
+      - name: 安裝 Python 套件
+        working-directory: windows
+        run: python -m pip install -r requirements.txt
+
+      - name: 準備網頁資源與 App 圖示
+        working-directory: windows
+        run: |
+          mkdir -p web
+          cp ../index.html ../version.json ../favicon.svg ../favicon-32.png ../favicon-16.png ../apple-touch-icon.png ../manifest.webmanifest web/
+          cp -R ../icons web/icons
+          mkdir -p app.iconset
+          for s in 16 32 128 256 512; do
+            sips -z $s $s ../icons/icon-512.png --out app.iconset/icon_${s}x${s}.png >/dev/null
+            d=$((s*2)); sips -z $d $d ../icons/icon-512.png --out app.iconset/icon_${s}x${s}@2x.png >/dev/null
+          done
+          iconutil -c icns app.iconset -o app.icns
+
+      - name: PyInstaller 打包成 .app
+        working-directory: windows
+        run: |
+          python -m PyInstaller --noconfirm --clean --windowed --name XiaokeVideo --icon app.icns --add-data "web:web" \
+            --osx-bundle-identifier org.achir1015.xiaokevideo --distpath ../dist --workpath ../build app.py
+          cd ../dist
+          mv XiaokeVideo.app "小柯影音剪輯助手.app"
+          P="小柯影音剪輯助手.app/Contents/Info.plist"
+          plutil -replace CFBundleDisplayName -string "小柯影音剪輯助手" "$P"
+          plutil -replace CFBundleShortVersionString -string "${{ steps.ver.outputs.ver }}" "$P"
+          plutil -replace CFBundleVersion -string "${{ steps.ver.outputs.ver }}" "$P"
+          plutil -replace NSHighResolutionCapable -bool true "$P"
+          codesign --force --deep -s - "小柯影音剪輯助手.app"
+          du -sh "小柯影音剪輯助手.app"
+
+      - name: 自我測試
+        run: |
+          mkdir -p "$RUNNER_TEMP/kk" test-output
+          "dist/小柯影音剪輯助手.app/Contents/MacOS/XiaokeVideo" --selftest "$RUNNER_TEMP/kk/report.json" &
+          PID=$!
+          for i in $(seq 1 120); do [ -f "$RUNNER_TEMP/kk/report.json" ] && break; sleep 2; done
+          sleep 3; kill $PID 2>/dev/null || true
+          cp "$RUNNER_TEMP"/kk/* test-output/ 2>/dev/null || true
+          [ -f test-output/report.json ] || { echo "::error::沒有產生測試報告"; exit 1; }
+          python - <<'EOF'
+          import json, sys
+          r = json.load(open('test-output/report.json', encoding='utf-8'))
+          print(json.dumps(r, ensure_ascii=False, indent=1))
+          print(f"::warning title=自我測試（Mac ${{ matrix.arch }}）::ok={r.get('ok')} 匯出={r.get('export_file_ok')} " + ' / '.join(('✔' if s['ok'] else '✘') + s['name'] for s in (r.get('edit') or {}).get('steps', [])))
+          sys.exit(0 if r.get('ok') else 1)
+          EOF
+
+      - name: 製作 .dmg
+        run: |
+          mkdir dmg
+          ditto "dist/小柯影音剪輯助手.app" "dmg/小柯影音剪輯助手.app"
+          ln -s /Applications dmg/Applications
+          cp windows/MAC_README.txt "dmg/第一次開啟請看這裡.txt"
+          hdiutil create -volname "小柯影音剪輯助手" -srcfolder dmg -ov -format UDZO "XiaokeVideo-mac-${{ matrix.arch }}-${{ steps.ver.outputs.ver }}.dmg"
+          ls -lh *.dmg
+
+      - name: 上傳 .dmg 與測試結果
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: XiaokeVideo-mac-${{ matrix.arch }}
+          path: |
+            *.dmg
+            test-output/
+
+  release:
+    name: 發佈到 Releases（全部測試通過才發佈）
+    needs: [build-test, mac]
+    if: success() && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: 整理檔案與發佈說明
+        id: ver
+        run: |
+          V=$(python3 -c 'import json;print(json.load(open("version.json"))["version"])')
+          echo "ver=$V" >> "$GITHUB_OUTPUT"
+          mkdir release
+          cp artifacts/XiaokeVideo-windows/dist-installer/*.exe release/
+          cp artifacts/XiaokeVideo-mac-*/*.dmg release/ 2>/dev/null || true
+          cp artifacts/XiaokeVideo-windows/test-output/report.json release/selftest-report.json
+          cp artifacts/XiaokeVideo-windows/test-output/selftest-editor.png artifacts/XiaokeVideo-windows/test-output/selftest-export.mp4 release/ 2>/dev/null || true
+          ls -lh release
+          python3 - <<'EOF'
+          import json
+          j = json.load(open('version.json', encoding='utf-8'))
+          body = f"## v{j['version']} 更新內容\n\n" + "\n".join(f"- {n}" for n in j['notes']) + "\n\n" + open('windows/RELEASE_NOTES.md', encoding='utf-8').read()
+          open('release-body.md', 'w', encoding='utf-8').write(body)
+          EOF
+
+      - uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.ver.outputs.ver }}
           target_commitish: ${{ github.sha }}
           make_latest: true
-          name: 小柯影音剪輯助手 v${{ steps.ver.outputs.ver }}（Windows 11）
+          name: 小柯影音剪輯助手 v${{ steps.ver.outputs.ver }}（Windows 11／Mac／iPad）
           body_path: release-body.md
-          files: |
-            dist-installer/*.exe
-            selftest-report.json
-            test-output/selftest-editor.png
-            test-output/selftest-export.mp4
+          files: release/*
