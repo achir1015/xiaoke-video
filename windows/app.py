@@ -366,7 +366,7 @@ class SelfTest:
             self.screenshot("selftest-editor.png")
             self.window.evaluate_js(self.JS_EXPORT_START)
             state = {}
-            for _ in range(180):  # 最多等 90 秒（含產生配樂）
+            for _ in range(360):  # 最多等 180 秒（含產生配樂；Intel Mac 雲端電腦比較慢）
                 time.sleep(0.5)
                 state = self.window.evaluate_js("window.__kkTest") or {}
                 if state.get("state") in ("done", "error"):

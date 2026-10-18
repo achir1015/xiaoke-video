@@ -169,7 +169,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/kk" test-output
           "dist/小柯影音剪輯助手.app/Contents/MacOS/XiaokeVideo" --selftest "$RUNNER_TEMP/kk/report.json" &
           PID=$!
-          for i in $(seq 1 120); do [ -f "$RUNNER_TEMP/kk/report.json" ] && break; sleep 2; done
+          for i in $(seq 1 180); do [ -f "$RUNNER_TEMP/kk/report.json" ] && break; sleep 2; done
           sleep 3; kill $PID 2>/dev/null || true
           cp "$RUNNER_TEMP"/kk/* test-output/ 2>/dev/null || true
           [ -f test-output/report.json ] || { echo "::error::沒有產生測試報告"; exit 1; }
@@ -177,7 +177,7 @@ jobs:
           import json, sys
           r = json.load(open('test-output/report.json', encoding='utf-8'))
           print(json.dumps(r, ensure_ascii=False, indent=1))
-          print(f"::warning title=自我測試（Mac ${{ matrix.arch }}）::ok={r.get('ok')} 匯出={r.get('export_file_ok')} " + ' / '.join(('✔' if s['ok'] else '✘') + s['name'] for s in (r.get('edit') or {}).get('steps', [])))
+          print(f"::warning title=自我測試（Mac ${{ matrix.arch }}）::ok={r.get('ok')} 匯出={r.get('export_file_ok')} {json.dumps(r.get('export'), ensure_ascii=False)} {r.get('error') or ''} " + ' / '.join(('✔' if s['ok'] else '✘') + s['name'] for s in (r.get('edit') or {}).get('steps', [])))
           sys.exit(0 if r.get('ok') else 1)
           EOF
 
