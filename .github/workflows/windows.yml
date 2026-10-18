@@ -5,8 +5,6 @@ on:
     branches: [main]
     tags: ['v*']
     paths: ['index.html', 'windows/**', 'icons/**', '.github/workflows/windows.yml']
-  release:
-    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -26,7 +24,7 @@ jobs:
         id: ver
         shell: pwsh
         run: |
-          $v = if ($env:GITHUB_REF -like 'refs/tags/v*') { $env:GITHUB_REF_NAME.TrimStart('v') } else { '1.0.0' }
+          $v = (Get-Content windows\VERSION -Raw).Trim()
           "ver=$v" >> $env:GITHUB_OUTPUT
 
       - name: 安裝 Python 套件
@@ -111,10 +109,13 @@ jobs:
             dist-installer/*.exe
             test-output/
 
-      - name: 發佈到 Releases
-        if: startsWith(github.ref, 'refs/tags/v')
+      - name: 發佈到 Releases（測試全部通過才會發佈）
+        if: success() && github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: v${{ steps.ver.outputs.ver }}
+          target_commitish: ${{ github.sha }}
+          make_latest: true
           name: 小柯影音剪輯助手 v${{ steps.ver.outputs.ver }}（Windows 11）
           body_path: windows/RELEASE_NOTES.md
           files: |
