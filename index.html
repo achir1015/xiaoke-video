@@ -385,13 +385,22 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;',
 
 // ---------- 軌道與畫面格式 ----------
 const TRACKS = [
-  { id: 'T1', kind: 'text', label: '字幕' },
+  { id: 'T3', kind: 'text', label: '字幕 3' },
+  { id: 'T2', kind: 'text', label: '字幕 2' },
+  { id: 'T1', kind: 'text', label: '字幕 1' },
   { id: 'V2', kind: 'video', label: '疊加畫面' },
   { id: 'V1', kind: 'video', label: '主畫面' },
   { id: 'A1', kind: 'audio', label: '音訊' },
   { id: 'A2', kind: 'audio', label: '配樂' },
 ];
 const trackKind = id => (TRACKS.find(t => t.id === id) || {}).kind;
+const TEXT_TRACKS = ['T1', 'T2', 'T3'];        // 畫面疊放順序：T1 在下、T3 在最上
+const POS_Y = { top: 12, center: 50, bottom: 88 };   // 上／中／下 快速定位（文字區塊中心點，畫面高度 %）
+// 找一條在 [s,e) 期間沒有字幕的軌道；都被佔用就用 T1（覆蓋）
+function freeTextTrack(s, e) {
+  for (const tr of TEXT_TRACKS) if (!doc.clips.some(c => c.track === tr && c.start < e && clipEnd(c) > s)) return tr;
+  return 'T1';
+}
 const FORMATS = { hd720: [1280, 720], hd1080: [1920, 1080], vert: [1080, 1920], square: [1080, 1080] };
 
 // 調色風格（像 Lumetri 的 Creative Looks，用程式寫的色彩轉換，不是 LUT 檔）
@@ -421,7 +430,7 @@ const GENS = [
 let doc = {
   name: '範例專案',
   format: 'hd720',
-  tracks: { T1: { muted: false }, V2: { muted: false }, V1: { muted: false }, A1: { muted: false }, A2: { muted: false } },
+  tracks: { T3: { muted: false }, T2: { muted: false }, T1: { muted: false }, V2: { muted: false }, V1: { muted: false }, A1: { muted: false }, A2: { muted: false } },
   clips: [],
   nextId: 1,
 };
@@ -448,10 +457,16 @@ function makeClip(type, track, start, dur, extra = {}) {
     fx: { exposure: 0, contrast: 0, saturation: 0, temp: 0, vignette: 0, look: 'none' },
   }, extra);
 }
+// 舊專案只有 pos（上中下），換算成 x、y
+function textXY(tx) {
+  if (tx.x == null) tx.x = 50;
+  if (tx.y == null) tx.y = POS_Y[tx.pos] ?? POS_Y.bottom;
+  return tx;
+}
 function textDefaults(content, style = 'subtitle') {
   return style === 'title'
-    ? { content, style, size: 9, color: '#ffffff', pos: 'center', bg: false, bold: true }
-    : { content, style, size: 5.2, color: '#ffffff', pos: 'bottom', bg: true, bold: false };
+    ? { content, style, size: 9, color: '#ffffff', x: 50, y: POS_Y.center, bg: false, bold: true }
+    : { content, style, size: 5.2, color: '#ffffff', x: 50, y: POS_Y.bottom, bg: true, bold: false };
 }
 
 // ---------- 覆蓋式放置：把 [s,e) 範圍內同軌的其他片段讓出來（Premiere 的 overwrite edit） ----------
@@ -638,34 +653,42 @@ defCmd('color.set', '調色', '{clipId?|all?, look?:"none|warm|cool|teal|mono|vi
   }
   return `調整了 ${list.length} 個片段的顏色`;
 });
-defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), duration?秒(預設3), style?:"subtitle"|"title"}', p => {
+defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), duration?秒(預設3), style?:"subtitle"|"title", track?:"T1"|"T2"|"T3"(預設找空的軌), x?%, y?%}', p => {
   const content = String(p.text ?? '').trim() || '在這裡輸入字幕';
-  const st = p.start != null ? sec(Number(p.start)) : UI.playhead;
-  const c = makeClip('text', 'T1', st, sec(Number(p.duration) || 3), { text: textDefaults(content, p.style === 'title' ? 'title' : 'subtitle') });
-  overwrite('T1', c.start, clipEnd(c), c.id); doc.clips.push(c); UI.sel = c.id;
-  return `加了字幕 #${c.id}：「${content}」`;
+  const st = snapF(p.start != null ? sec(Number(p.start)) : UI.playhead), du = sec(Number(p.duration) || 3);
+  const track = TEXT_TRACKS.includes(p.track) ? p.track : freeTextTrack(st, st + du);
+  const c = makeClip('text', track, st, du, { text: textDefaults(content, p.style === 'title' ? 'title' : 'subtitle') });
+  if (p.x != null) c.text.x = clamp(Number(p.x), 0, 100);
+  if (p.y != null) c.text.y = clamp(Number(p.y), 0, 100);
+  overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c); UI.sel = c.id;
+  return `在 ${track} 加了字幕 #${c.id}：「${content}」`;
 });
-defCmd('text.set', '修改文字', '{clipId?, text?, size?(畫面高度的%), color?(#hex), position?:"top"|"center"|"bottom", background?:bool, bold?:bool}', p => {
+defCmd('text.set', '修改文字', '{clipId?|clipIds?|all?, text?, size?(畫面高度的%), color?(#hex), position?:"top"|"center"|"bottom"(快速定位), x?(0~100，畫面寬度%，文字中心), y?(0~100，畫面高度%，文字中心), background?:bool, bold?:bool}', p => {
   const list = targets(Object.assign({ type: 'text' }, p)).filter(c => c.type === 'text');
   if (!list.length) throw new Error('請選一個字幕片段');
   for (const c of list) {
     if (p.text != null) c.text.content = String(p.text);
     if (p.size != null) c.text.size = clamp(Number(p.size), 2, 25);
     if (p.color != null && /^#[0-9a-f]{6}$/i.test(p.color)) c.text.color = p.color;
-    if (p.position != null && ['top', 'center', 'bottom'].includes(p.position)) c.text.pos = p.position;
+    textXY(c.text);
+    if (p.position != null && POS_Y[p.position] != null) { c.text.y = POS_Y[p.position]; c.text.x = 50; }
+    if (p.x != null) c.text.x = clamp(Number(p.x), 0, 100);
+    if (p.y != null) c.text.y = clamp(Number(p.y), 0, 100);
+    delete c.text.pos;
     if (p.background != null) c.text.bg = !!p.background;
     if (p.bold != null) c.text.bold = !!p.bold;
   }
   return `更新了 ${list.length} 個字幕`;
 });
-defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}]}', p => {
+defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1)}', p => {
+  const track = TEXT_TRACKS.includes(p.track) ? p.track : 'T1';
   const items = Array.isArray(p.items) ? p.items : [];
   if (!items.length) throw new Error('沒有字幕內容');
   for (const it of items.slice(0, 500)) {
     const s = sec(Number(it.start) || 0), e = sec(Number(it.end) || 0);
     if (!(e > s)) continue;
-    const c = makeClip('text', 'T1', s, e - s, { text: textDefaults(String(it.text || '')) });
-    overwrite('T1', c.start, clipEnd(c), c.id); doc.clips.push(c);
+    const c = makeClip('text', track, s, e - s, { text: textDefaults(String(it.text || '')) });
+    overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c);
   }
   return `加入 ${items.length} 句字幕`;
 });
@@ -772,6 +795,8 @@ const genCv = document.createElement('canvas'), genCtx = genCv.getContext('2d');
 const Els = new Map();   // clipId -> {el, mediaId, gain}
 let AC = null, master = null, speaker = null, recDest = null;
 let needDraw = true;
+let textBoxes = [];      // 目前畫面上每段字幕的範圍（畫布座標）
+let canvasDrag = null;   // 在監看畫面上拖曳字幕／畫面的狀態
 function ensureAudio() {
   if (AC) { if (AC.state === 'suspended') AC.resume(); return; }
   try {
@@ -940,27 +965,46 @@ function drawText(c, t) {
   ctx.globalAlpha = fadeAt(c, t);
   ctx.font = `${tx.bold ? 700 : 500} ${size}px "Noto Sans TC","PingFang TC","Microsoft JhengHei",sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  textXY(tx);
   const lines = wrapText(tx.content, W * .86), lh = size * 1.35, total = lines.length * lh;
-  let y0 = tx.pos === 'top' ? H * .08 + lh / 2 : tx.pos === 'center' ? H / 2 - total / 2 + lh / 2 : H * .92 - total + lh / 2;
+  const maxW = Math.max(size, ...lines.map(l => ctx.measureText(l).width)) + size * .8;
+  // 文字區塊中心點 = (x%, y%)，並限制在畫面內
+  const cx = clamp(tx.x / 100 * W, maxW / 2, W - maxW / 2);
+  const cy = clamp(tx.y / 100 * H, total / 2, H - total / 2);
+  const y0 = cy - total / 2 + lh / 2;
   lines.forEach((ln, i) => {
     const y = y0 + i * lh;
     if (tx.bg && ln) {
       const w = ctx.measureText(ln).width + size * .8;
       ctx.fillStyle = 'rgba(0,0,0,.6)';
-      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(W / 2 - w / 2, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(W / 2 - w / 2, y - lh / 2 + 2, w, lh - 4); ctx.fill();
+      ctx.beginPath(); ctx.roundRect ? ctx.roundRect(cx - w / 2, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(cx - w / 2, y - lh / 2 + 2, w, lh - 4); ctx.fill();
     } else {
-      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(ln, W / 2, y);
+      ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(ln, cx, y);
     }
-    ctx.fillStyle = tx.color || '#fff'; ctx.fillText(ln, W / 2, y);
+    ctx.fillStyle = tx.color || '#fff'; ctx.fillText(ln, cx, y);
   });
   ctx.restore();
+  // 記下這段字幕在畫面上的範圍，讓滑鼠可以點選、拖曳
+  textBoxes.push({ id: c.id, x0: cx - maxW / 2, y0: cy - total / 2, x1: cx + maxW / 2, y1: cy + total / 2 });
 }
 function draw(t) {
   const W = cv.width, H = cv.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
   for (const tr of ['V1', 'V2']) { if (doc.tracks[tr].muted) continue; const c = clipAt(tr, t); if (c) drawVisual(c, t); }
-  if (!doc.tracks.T1.muted) { const c = clipAt('T1', t); if (c) drawText(c, t); }
+  textBoxes = [];
+  for (const tr of TEXT_TRACKS) { if (doc.tracks[tr]?.muted) continue; const c = clipAt(tr, t); if (c) drawText(c, t); }
+  // 選取中的字幕畫虛線框，提示可以拖曳
+  if (!UI.exporting) {
+    const b = textBoxes.find(x => x.id === UI.sel);
+    if (b) {
+      const pad = H / 120;
+      ctx.save(); ctx.strokeStyle = '#f0a83a'; ctx.lineWidth = Math.max(1.5, H / 400); ctx.setLineDash([H / 70, H / 110]);
+      ctx.strokeRect(b.x0 - pad, b.y0 - pad, b.x1 - b.x0 + pad * 2, b.y1 - b.y0 + pad * 2); ctx.restore();
+    }
+    if (canvasDrag && canvasDrag.guideX) { ctx.save(); ctx.strokeStyle = 'rgba(240,168,58,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke(); ctx.restore(); }
+    if (canvasDrag && canvasDrag.guideY != null) { ctx.save(); ctx.strokeStyle = 'rgba(240,168,58,.7)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(0, canvasDrag.guideY / 100 * H); ctx.lineTo(W, canvasDrag.guideY / 100 * H); ctx.stroke(); ctx.restore(); }
+  }
   if (UI.safe && !UI.exporting) {
     ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = Math.max(1, H / 540); ctx.setLineDash([H / 60, H / 90]);
     ctx.strokeRect(W * .05, H * .05, W * .9, H * .9); ctx.strokeRect(W * .1, H * .1, W * .8, H * .8); ctx.setLineDash([]);
@@ -1090,7 +1134,10 @@ function renderInspector() {
       h += `<div class="sec"><h4>文字內容</h4><textarea id="f_text" rows="3">${esc(c.text.content)}</textarea></div>
         <div class="sec"><h4>樣式</h4>
         ${rng('size', '字級', c.text.size, 2, 20, .2, '%')}
-        <div class="field"><label>位置</label><div class="seg" data-seg="position">${[['top', '上'], ['center', '中'], ['bottom', '下']].map(([v, l]) => `<button data-v="${v}" aria-pressed="${c.text.pos === v}">${l}</button>`).join('')}</div><span></span></div>
+        <div class="field"><label>快速定位</label><div class="seg" data-seg="position">${[['top', '上'], ['center', '中'], ['bottom', '下']].map(([v, l]) => `<button data-v="${v}" aria-pressed="${textXY(c.text).x === 50 && c.text.y === POS_Y[v]}">${l}</button>`).join('')}</div><span></span></div>
+        ${rng('tx', '左右', Math.round(c.text.x), 0, 100, 1, '%')}${rng('ty', '上下', Math.round(c.text.y), 0, 100, 1, '%')}
+        <p class="note">也可以在監看畫面上<b>按住字幕直接拖曳</b>到想要的位置（靠近正中央或上中下會自動吸附）。</p>
+        <div class="field"><label>放在軌道</label><div class="seg" data-seg="track">${TEXT_TRACKS.map(tr => `<button data-v="${tr}" aria-pressed="${c.track === tr}">${tr}</button>`).join('')}</div><span></span></div>
         <div class="field"><label for="f_color">顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
         <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 黑色底框</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div></div>`;
     }
@@ -1128,7 +1175,7 @@ function projectSummary() {
     素材: [...Media.values()].map(m => ({ mediaId: m.id, 名稱: m.name, 類型: m.kind, 長度秒: m.kind === 'image' ? null : +toSec(m.dur).toFixed(2) })),
     片段: doc.clips.slice().sort((a, b) => a.track.localeCompare(b.track) || a.start - b.start).map(c => ({
       clipId: c.id, 軌道: c.track, 類型: c.type, 名稱: clipName(c), 開始: +toSec(c.start).toFixed(2), 結束: +toSec(clipEnd(c)).toFixed(2),
-      ...(c.type === 'text' ? { 文字: c.text.content } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look }),
+      ...(c.type === 'text' ? { 文字: c.text.content, x: textXY(c.text).x, y: c.text.y } : { 速度: c.speed, 音量: c.volume, 風格: c.fx?.look }),
     })),
   };
 }
@@ -1164,7 +1211,7 @@ const KK_RULES = () => `你是「小柯」，「小柯影音剪輯助手」網�
 3. 做完後用繁體中文、一到三句話說明你做了什麼。如果指令失敗，看錯誤訊息調整後再試一次，還是不行就說明原因。
 4. 你看不到畫面也聽不到聲音，所以不能自動聽打字幕；但可以幫忙寫字幕文案、標題、分段建議，並用 captions.addMany 或 text.add 放上去。
 5. 要求不清楚或會刪掉很多東西時，先問一句確認。
-軌道：T1 字幕，V2 疊加畫面（在 V1 上面），V1 主畫面，A1 音訊，A2 配樂。
+軌道：T1、T2、T3 三條字幕軌（同一時間可以各放一句，T3 疊在最上面；字幕位置用 x、y 百分比），V2 疊加畫面（在 V1 上面），V1 主畫面，A1 音訊，A2 配樂。
 可用指令（command：參數說明）：
 ${Object.values(Commands).map(c => `- ${c.id}（${c.label}）：${c.params}`).join('\n')}`;
 async function ask(text) {
@@ -1303,7 +1350,7 @@ function parseSrt(txt) {
 }
 function toSrt() {
   const f = t => { const ms = Math.round(toSec(t) * 1000); const h = Math.floor(ms / 3600000), m = Math.floor(ms / 60000) % 60, s = Math.floor(ms / 1000) % 60; return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
-  return clipsOn('T1').map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
+  return doc.clips.filter(c => c.type === 'text').sort((a, b) => a.start - b.start).map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
 }
 
 // ---------- 專案存檔 ----------
@@ -1441,7 +1488,7 @@ $('heads').addEventListener('click', e => { const b = e.target.closest('[data-mu
 // 屬性面板事件（滑桿連續拖動合併成一個復原步驟）
 const PROP_MAP = { speed: ['clip.set', v => ({ speed: v })], volume: ['clip.set', v => ({ volume: v / 100 })], fadeIn: ['clip.set', v => ({ fadeIn: v })], fadeOut: ['clip.set', v => ({ fadeOut: v })],
   scale: ['clip.set', v => ({ scale: v })], x: ['clip.set', v => ({ x: v })], y: ['clip.set', v => ({ y: v })], rotation: ['clip.set', v => ({ rotation: v })], opacity: ['clip.set', v => ({ opacity: v })],
-  size: ['text.set', v => ({ size: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
+  size: ['text.set', v => ({ size: v })], tx: ['text.set', v => ({ x: v })], ty: ['text.set', v => ({ y: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
   temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })] };
 for (const pane of ['pProps', 'pColor']) {
   $(pane).addEventListener('input', e => {
@@ -1461,7 +1508,9 @@ for (const pane of ['pProps', 'pColor']) {
   $(pane).addEventListener('click', e => {
     const id = UI.sel, b = e.target.closest('button'); if (!b) return;
     if (b.dataset.look) { tryExec('color.set', { clipId: id, look: b.dataset.look }); return; }
-    if (b.closest('[data-seg]')) { tryExec('text.set', { clipId: id, position: b.dataset.v }); return; }
+    const seg = b.closest('[data-seg]');
+    if (seg && seg.dataset.seg === 'track') { const c = getClip(id); if (c) tryExec('timeline.move', { clipId: id, track: b.dataset.v, start: toSec(c.start) }); return; }
+    if (seg) { tryExec('text.set', { clipId: id, position: b.dataset.v }); return; }
     const act = b.dataset.act;
     if (act === 'mute') { const c = getClip(id); tryExec('clip.set', { clipId: id, volume: c.volume === 0 ? 1 : 0 }); }
     if (act === 'resetTf') tryExec('clip.set', { clipId: id, scale: 100, x: 0, y: 0, rotation: 0, opacity: 100 });
@@ -1506,10 +1555,46 @@ $('projIn').onchange = e => { if (e.target.files[0]) openProject(e.target.files[
 $('bSrtIn').onclick = () => $('srtIn').click();
 $('srtIn').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const items = parseSrt(await f.text()); if (!items.length) { toast('沒有讀到字幕，請確認是 SRT 或 VTT 格式'); return; } toast(tryExec('captions.addMany', { items }) || ''); };
 $('bSrtOut').onclick = async () => {
-  const s = toSrt(); if (!s) { toast('T1 軌道上還沒有字幕'); return; }
+  const s = toSrt(); if (!s) { toast('字幕軌上還沒有字幕'); return; }
   try { await navigator.clipboard.writeText(s); toast('SRT 內容已複製；也可以存成檔案'); } catch { }
   saveFile((doc.name || '字幕') + '-字幕.srt.txt', s);
 };
+
+// 監看畫面：按住字幕（或選取中的畫面片段）拖曳到想要的位置
+function canvasPt(e) { const r = cv.getBoundingClientRect(); return { x: (e.clientX - r.left) * cv.width / r.width, y: (e.clientY - r.top) * cv.height / r.height }; }
+function hitText(pt) { for (let i = textBoxes.length - 1; i >= 0; i--) { const b = textBoxes[i], pad = cv.height / 60; if (pt.x >= b.x0 - pad && pt.x <= b.x1 + pad && pt.y >= b.y0 - pad && pt.y <= b.y1 + pad) return b; } return null; }
+cv.style.touchAction = 'none';
+cv.addEventListener('pointerdown', e => {
+  if (UI.exporting || e.button !== 0) return;
+  if (UI.playing) pause();
+  const pt = canvasPt(e), hit = hitText(pt);
+  if (hit) {
+    const c = getClip(hit.id); textXY(c.text);
+    canvasDrag = { kind: 'text', id: c.id, px: pt.x, py: pt.y, x0: c.text.x, y0: c.text.y };
+    if (UI.sel !== c.id) { UI.sel = c.id; renderTimeline(); renderInspector(); if (UI.tab !== 'props') switchTab('props'); }
+  } else {
+    const c = getClip(UI.sel);
+    if (!c || c.type === 'text' || c.type === 'audio' || !(UI.playhead >= c.start && UI.playhead < clipEnd(c))) return;
+    canvasDrag = { kind: 'visual', id: c.id, px: pt.x, py: pt.y, x0: c.tf.x, y0: c.tf.y };
+  }
+  cv.setPointerCapture(e.pointerId); needDraw = true; e.preventDefault();
+});
+cv.addEventListener('pointermove', e => {
+  const pt = canvasPt(e);
+  if (!canvasDrag) { cv.style.cursor = hitText(pt) ? 'move' : ''; return; }
+  const d = canvasDrag, dx = (pt.x - d.px) / cv.width * 100, dy = (pt.y - d.py) / cv.height * 100;
+  if (d.kind === 'text') {
+    let x = clamp(d.x0 + dx, 0, 100), y = clamp(d.y0 + dy, 0, 100);
+    d.guideX = Math.abs(x - 50) < 1.5; if (d.guideX) x = 50;          // 吸附到左右正中央
+    d.guideY = null; for (const v of Object.values(POS_Y)) if (Math.abs(y - v) < 1.5) { y = v; d.guideY = v; }   // 吸附到上中下
+    tryExec('text.set', { clipId: d.id, x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 }, { coalesce: 'drag' + d.id, light: true });
+  } else {
+    // 畫面片段的 x、y 是相對半個畫面的百分比
+    tryExec('clip.set', { clipId: d.id, x: Math.round((d.x0 + dx * 2) * 10) / 10, y: Math.round((d.y0 + dy * 2) * 10) / 10 }, { coalesce: 'drag' + d.id, light: true });
+  }
+});
+const endCanvasDrag = () => { if (!canvasDrag) return; canvasDrag = null; lastCoalesce = null; needDraw = true; renderInspector(); };
+cv.addEventListener('pointerup', endCanvasDrag); cv.addEventListener('pointercancel', endCanvasDrag);
 
 // 鍵盤快捷鍵
 document.addEventListener('keydown', e => {
@@ -1545,7 +1630,8 @@ function demo() {
   const gr = makeClip('gen', 'V1', sec(3), sec(7), { mediaId: 'g1', gen: { kind: 'gradient' }, fadeOut: 1 });
   const t1 = makeClip('text', 'T1', sec(3.5), sec(3), { text: textDefaults('小柯影音剪輯助手', 'title'), fadeIn: .5, fadeOut: .5 });
   const t2 = makeClip('text', 'T1', sec(6.5), sec(3.5), { text: textDefaults('把影片拖進左邊素材箱，就能開始剪輯') });
-  doc.clips.push(cd, gr, t1, t2);
+  const t3 = makeClip('text', 'T2', sec(6.5), sec(3.5), { text: Object.assign(textDefaults('可以按住字幕拖到任何位置'), { y: POS_Y.top, bg: false, size: 4.2, color: '#f0a83a' }) });
+  doc.clips.push(cd, gr, t1, t2, t3);
   doc.name = '範例專案（可直接刪掉重來）';
   UI.playhead = sec(4.2);
 }
