@@ -38,6 +38,13 @@ Name: "cht"; MessagesFile: "ChineseTraditional.isl"
 Name: "en"; MessagesFile: "compiler:Default.isl"
 #endif
 
+[LangOptions]
+; 安裝畫面字放大一倍（預設 9／12 點）；精靈視窗會依字型大小自動等比放大
+DialogFontName=Microsoft JhengHei UI
+DialogFontSize=18
+WelcomeFontName=Microsoft JhengHei UI
+WelcomeFontSize=24
+
 [Tasks]
 Name: "desktopicon"; Description: "在桌面建立捷徑"; GroupDescription: "其他捷徑："
 

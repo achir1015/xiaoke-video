@@ -26,7 +26,7 @@ from pathlib import Path
 import webview
 
 APP_NAME = "小柯影音剪輯助手"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.0.1"
 HTTP_PORT = 48123  # 固定埠號，讓瀏覽器儲存的偏好設定每次開啟都還在
 
 

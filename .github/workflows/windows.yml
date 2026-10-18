@@ -48,7 +48,7 @@ jobs:
         working-directory: windows
         shell: pwsh
         run: |
-          try { Invoke-WebRequest "https://raw.githubusercontent.com/jrsoftware/issrc/main/Files/Languages/Unofficial/ChineseTraditional.isl" -OutFile ChineseTraditional.isl } catch { Write-Host "中文語系下載失敗，使用英文介面" }
+          if (-not (Test-Path ChineseTraditional.isl)) { throw '缺少中文安裝介面 ChineseTraditional.isl' }
           $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
           & $iscc "/DAppVer=${{ steps.ver.outputs.ver }}" installer.iss
