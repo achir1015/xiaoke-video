@@ -2755,7 +2755,13 @@ async function startExport() {
   rec.onstop = () => {
     UI.exporting = false; if (speaker) speaker.gain.value = 1;
     if (recCancel) { $('exStat').textContent = '已取消匯出。'; resetExportUI(); return; }
-    recBlob = new Blob(recChunks, { type: pick[0].split(';')[0] });
+    const blob = new Blob(recChunks, { type: pick[0].split(';')[0] });
+    if (!blob.size) {     // 有些電腦（例如沒有硬體編碼器的 Mac）這種格式錄不出內容：自動換下一種格式再錄
+      const i = list.findIndex(m => m[0] === pick[0]), next = list[i + 1];
+      if (next) { $('exFmt').value = String(i + 1); $('exStat').textContent = `${pick[1]} 錄不出內容，改用 ${next[1]} 再錄一次…`; UI.playhead = 0; setTimeout(startExport, 400); return; }
+      $('exStat').textContent = '這台電腦錄不出影片（錄到的檔案是空的），請換一台電腦或改用線上版的 Chrome／Edge。'; resetExportUI(); return;
+    }
+    recBlob = blob;
     $('exBar').style.width = '100%';
     $('exStat').textContent = `完成！檔案大小 ${(recBlob.size / 1048576).toFixed(1)} MB。可以先在下面預覽，再儲存到電腦。`;
     const v = $('exVid'); v.src = URL.createObjectURL(recBlob); v.hidden = false;
