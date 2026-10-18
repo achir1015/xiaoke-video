@@ -356,13 +356,19 @@ class SelfTest:
         report = {"app": APP_NAME, "version": APP_VERSION, "ok": False, "edit": None, "export": None, "error": None}
         try:
             # 等網頁與 pywebview API 都就緒
-            for _ in range(60):
+            for _ in range(180):   # 最多等 90 秒（慢的雲端電腦載入比較久）
                 ready = self.window.evaluate_js("typeof exec === 'function' && !!(window.pywebview && window.pywebview.api && window.pywebview.api.begin_save)")
                 if ready:
                     break
                 time.sleep(0.5)
             time.sleep(1.5)
-            report["edit"] = json.loads(self.window.evaluate_js(self.JS_EDIT))
+            edit = None
+            for _ in range(3):     # 偶爾第一次呼叫拿不到結果，再試兩次
+                edit = self.window.evaluate_js(self.JS_EDIT)
+                if edit:
+                    break
+                time.sleep(3)
+            report["edit"] = json.loads(edit) if edit else {"ok": False, "steps": [], "note": "網頁沒有回傳測試結果"}
             self.screenshot("selftest-editor.png")
             self.window.evaluate_js(self.JS_EXPORT_START)
             state = {}
