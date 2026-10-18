@@ -26,7 +26,7 @@ from pathlib import Path
 import webview
 
 APP_NAME = "小柯影音剪輯助手"
-APP_VERSION = "1.0.1"
+APP_VERSION = "1.0.2"
 HTTP_PORT = 48123  # 固定埠號，讓瀏覽器儲存的偏好設定每次開啟都還在
 
 
@@ -146,6 +146,39 @@ class DesktopBridge:
             target = target.parent
         os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
         return True
+
+
+class DisplayScale:
+    """讓桌面版和線上版的版面一樣。
+
+    Windows「協助工具 → 文字大小」（例如 210%）會讓 WebView2 把整頁放大，
+    網頁寬度掉到 980px 以下就變成手機版單欄。這裡把放大倍率限制在
+    「網頁寬度至少 MIN_CSS_WIDTH」的範圍內，維持三欄版面（1920 寬螢幕約 1.4 倍）。
+    """
+
+    MIN_CSS_WIDTH = 1366
+
+    @staticmethod
+    def fit(window):
+        try:
+            info = None
+            for _ in range(40):
+                info = window.evaluate_js("[innerWidth, devicePixelRatio]")
+                if info:
+                    break
+                time.sleep(0.25)
+            css_width, dpr = info
+            physical = css_width * dpr
+            target = max(1.0, min(dpr, physical / DisplayScale.MIN_CSS_WIDTH))
+            zoom = round(target / dpr, 3)
+            if abs(zoom - 1) < 0.01:
+                return
+            from System import Action  # pythonnet，pywebview 在 Windows 已載入
+            form = window.native
+            control = form.browser.webview
+            form.Invoke(Action(lambda: setattr(control, "ZoomFactor", zoom)))
+        except Exception:
+            pass  # 調不了就維持原樣，不影響使用
 
 
 class SelfTest:
@@ -272,10 +305,14 @@ def main():
     except Exception:
         pass
 
-    func = None
-    if selftest_path is not None:
-        tester = SelfTest(window, bridge, selftest_path)
-        func = lambda: threading.Thread(target=tester.run, daemon=True).start()  # noqa: E731
+    tester = SelfTest(window, bridge, selftest_path) if selftest_path is not None else None
+
+    def on_start():
+        DisplayScale.fit(window)
+        if tester:
+            threading.Thread(target=tester.run, daemon=True).start()
+
+    func = on_start
 
     webview.start(
         func, gui="edgechromium", http_server=True, http_port=HTTP_PORT,
