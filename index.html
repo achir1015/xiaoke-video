@@ -112,6 +112,20 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .mrow .mt b{font-weight:500;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .mrow .mt small{font-size:10px;color:var(--muted);font-family:var(--f-mono)}
 .mrow .add2{flex:none;background:#000a;border:0;border-radius:4px;color:#fff;padding:2px 7px;font-size:11px}
+/* 語音轉文字：核對逐字稿時把設定收起來，清單和「套用」按鈕一定看得到 */
+#sttOv .dlg{max-height:92vh;display:flex;flex-direction:column;overflow:auto}
+#sttOv .dlg>*{flex-shrink:0}
+#sttOv.reviewing .grid,#sttOv.reviewing #sttNote{display:none}
+#sttOv.reviewing #sttReview{flex:1 1 auto;flex-shrink:1;min-height:90px;display:flex;flex-direction:column}
+#sttOv.reviewing .slist{flex:1 1 auto;max-height:none;min-height:60px}
+/* 語音轉文字：逐字稿核對清單 */
+.slist{display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px;background:var(--bg)}
+.slist .srow{display:flex;align-items:center;gap:6px}
+.slist .srow time{flex:none;font-family:var(--f-mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 4px;cursor:pointer;white-space:nowrap}
+.slist .srow time:hover{border-color:var(--accent);color:var(--fg)}
+.slist .srow input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:4px 6px;color:var(--fg)}
+.slist .srow button{flex:none;background:transparent;border:0;color:var(--muted);padding:2px 6px;border-radius:4px}
+.slist .srow button:hover{background:#ffffff14;color:var(--danger)}
 /* 最近開啟的專案 */
 .recent{display:flex;flex-direction:column;gap:4px;max-height:46vh;overflow:auto}
 .recent .rc{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 9px;cursor:pointer;text-align:left;width:100%}
@@ -449,11 +463,16 @@ textarea{resize:vertical;width:100%}
     <p class="note" id="sttNote"></p>
     <div class="bar"><i id="sttBar"></i></div>
     <p class="note" id="sttStat"></p>
-    <textarea id="sttOut" rows="6" readonly hidden style="width:100%;font-size:12px"></textarea>
-    <div class="row2" style="justify-content:flex-end;margin-top:12px">
+    <div id="sttReview" hidden>
+      <div class="row2" style="align-items:center;margin:4px 0 6px;flex-wrap:wrap"><span class="bin-sec" style="margin:0;flex:1">逐字稿（可以直接改字、按 ✕ 刪句子、按時間試聽）</span>
+        <label>放到 <select id="sttTrackR"><option value="T1">T1（一般文字軌）</option><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option></select></label></div>
+      <div class="slist" id="sttList"></div>
+    </div>
+    <div class="row2" style="justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
       <button class="btn" id="sttClose">關閉</button>
       <button class="btn" id="sttStop" hidden>停止</button>
-      <button class="btn primary" id="sttGo">開始辨識</button>
+      <button class="btn" id="sttGo">開始辨識</button>
+      <button class="btn primary" id="sttApply" hidden>✓ 套用到字幕軌</button>
     </div>
   </div>
 </div>
@@ -2968,6 +2987,7 @@ function projReset(d) {    // 換成另一個專案：清掉目前的素材、�
   for (const id of [...Els.keys()]) dropEl(id);
   for (const m of [...Media.values()]) if (!m.builtin) { if (m.url && m.url.startsWith('blob:')) URL.revokeObjectURL(m.url); Media.delete(m.id); }
   doc = d; undoStack.length = 0; redoStack.length = 0; lastCoalesce = null;
+  Stt.result = null; Stt.audio.clear();
   UI.sel = null; UI.playhead = 0;
 }
 function confirmDiscard() { return !Proj.dirty || confirm(`「${doc.name}」還沒儲存，確定要放棄這些變更嗎？`); }
@@ -3412,7 +3432,7 @@ document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,select') && e.target.type !== 'range' && e.target.type !== 'checkbox' && !((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's')) return;
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   if (mod && k === 's' && !UI.exporting) { e.preventDefault(); $('projOv').hidden = true; projSave(e.shiftKey); return; }
-  if (!$('exportOv').hidden || !$('keysOv').hidden || !$('updOv').hidden || !$('sttOv').hidden || !$('projOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; $('updOv').hidden = true; $('projOv').hidden = true; if (!Stt.busy) $('sttOv').hidden = true; } return; }
+  if (!$('exportOv').hidden || !$('keysOv').hidden || !$('updOv').hidden || !$('sttOv').hidden || !$('projOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; $('updOv').hidden = true; $('projOv').hidden = true; if (!$('sttOv').hidden) sttClose(); } return; }
   if (mod && k === 'z') { e.preventDefault(); toast(e.shiftKey ? redo() : undo()); return; }
   if (mod && k === 'y') { e.preventDefault(); toast(redo()); return; }
   if (mod && k === 's') { e.preventDefault(); projSave(e.shiftKey); return; }
@@ -3667,8 +3687,61 @@ function openStt(selId) {
   sttModels();
   $('sttTrack').value = sttPref('track') || 'T1';
   $('sttMax').value = sttPref('max') || 16;
-  $('sttStat').textContent = ''; $('sttBar').style.width = '0%'; $('sttOut').hidden = true;
-  sttNote(); $('sttOv').hidden = false;
+  sttNote();
+  // 上次辨識完還沒套用的結果還留著：直接顯示，不用重新辨識
+  if (Stt.result && !Stt.result.applied) {
+    $('sttTrack').value = Stt.result.track;
+    $('sttStat').textContent = `上次辨識的結果還沒放到字幕軌（${Stt.result.items.length} 句）。核對後按「✓ 套用到字幕軌」，或按「重新辨識」。`;
+    $('sttBar').style.width = '100%'; sttRenderReview(); $('sttGo').textContent = '重新辨識';
+  } else { $('sttOv').classList.remove('reviewing'); $('sttStat').textContent = ''; $('sttBar').style.width = '0%'; $('sttReview').hidden = true; $('sttApply').hidden = true; $('sttGo').textContent = '開始辨識'; $('sttGo').classList.add('primary'); }
+  $('sttOv').hidden = false;
+}
+const sttFmt = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+// 逐字稿核對清單：每句一列（時間可點來試聽、文字可改、✕ 刪除）
+function sttRenderReview() {
+  const R = Stt.result;
+  $('sttTrackR').value = $('sttTrack').value;
+  $('sttList').innerHTML = R.items.map((it, i) => `<div class="srow" data-i="${i}"><time title="從這裡播放試聽">${sttFmt(it.start)}–${sttFmt(it.end)}</time><input value="${esc(it.text)}" aria-label="第 ${i + 1} 句"><button title="刪掉這句">✕</button></div>`).join('');
+  $('sttReview').hidden = false; $('sttApply').hidden = false; $('sttApply').disabled = !R.items.length;
+  $('sttApply').textContent = `✓ 套用到 ${$('sttTrack').value}（${R.items.length} 句）`;
+  $('sttGo').classList.remove('primary'); $('sttGo').textContent = '重新辨識…';
+  $('sttOv').classList.add('reviewing');
+}
+$('sttList').addEventListener('input', e => { const row = e.target.closest('[data-i]'); if (row && Stt.result) Stt.result.items[+row.dataset.i].text = e.target.value; });
+$('sttList').addEventListener('click', e => {
+  const row = e.target.closest('[data-i]'); if (!row || !Stt.result) return;
+  const it = Stt.result.items[+row.dataset.i];
+  if (e.target.closest('button')) { Stt.result.items.splice(+row.dataset.i, 1); sttRenderReview(); return; }
+  if (e.target.closest('time')) {     // 試聽這一句
+    seek(sec(it.start)); play(); clearTimeout(previewStop);
+    previewStop = setTimeout(() => { if (UI.playing && !UI.exporting) pause(); }, (it.end - it.start) * 1000 + 150);
+  }
+});
+// 把核對好的逐字稿放到選定的字幕軌（每句一段文字塊），確認真的放上去了才關閉
+function sttApply() {
+  const R = Stt.result; if (!R || !R.items.length) return false;
+  const track = $('sttTrack').value, items = R.items.map(it => ({ ...it, text: it.text.trim() })).filter(it => it.text && it.end - it.start > .1);
+  if (!items.length) { toast('逐字稿是空的，沒有可以放的句子'); return false; }
+  try {
+    const group = 'stt' + Date.now().toString(36);
+    exec('captions.addMany', { items, track, group, replace: $('sttReplace').checked });
+    const placed = doc.clips.filter(c => c.type === 'text' && c.text.group === group).sort((a, b) => a.start - b.start);
+    if (!placed.length) throw new Error('字幕沒有放上時間軸');
+    R.applied = true; R.track = track; sttPref('track', track);
+    $('sttOv').hidden = true;
+    UI.sel = placed[0].id; switchTab('props'); seek(placed[0].start); renderTimeline(); renderInspector();
+    // 時間軸捲到第一段字幕
+    const b = $('tlBody'), x = toSec(placed[0].start) * UI.pps; if (x < b.scrollLeft || x > b.scrollLeft + b.clientWidth - 120) b.scrollLeft = Math.max(0, x - 60);
+    document.querySelector(`.clip[data-cid="${placed[0].id}"]`)?.scrollIntoView({ block: 'nearest' });
+    toast(`已把 ${placed.length} 句字幕放到 ${track}（${{ T1: '一般文字軌', T2: '字幕 2', T3: '字幕 3' }[track]}）。點任一段調好樣式，再按「套用到這份逐字稿」就能一次統一。`);
+    return true;
+  } catch (e) { $('sttStat').textContent = '放到字幕軌失敗：' + (e?.message || e); toast('放到字幕軌失敗：' + (e?.message || e)); return false; }
+}
+function sttClose() {
+  if (Stt.busy) return;
+  const R = Stt.result;
+  if (R && !R.applied && R.items.length && confirm(`辨識好的 ${R.items.length} 句逐字稿還沒放到字幕軌，要現在套用嗎？\n（按「取消」也會保留結果，下次打開語音轉文字就能再套用）`)) { sttApply(); return; }
+  $('sttOv').hidden = true;
 }
 function sttModels() {
   const eng = $('sttEngine').value, list = STT_MODELS[eng];
@@ -3689,7 +3762,7 @@ async function runStt() {
   if (!src || !L) return;
   sttPref('lang', L.id); sttPref('engine', eng); sttPref('model-' + eng, model); sttPref('track', track); sttPref('max', String(max));
   Stt.busy = true; Stt.stop = false;
-  $('sttGo').hidden = true; $('sttStop').hidden = false; $('sttClose').disabled = true; $('sttOut').hidden = true;
+  $('sttGo').hidden = true; $('sttStop').hidden = false; $('sttClose').disabled = true; $('sttReview').hidden = true; $('sttApply').hidden = true; $('sttOv').classList.remove('reviewing');
   const stat = (msg, pct) => { $('sttStat').textContent = msg; if (pct != null) $('sttBar').style.width = (pct * 100).toFixed(1) + '%'; };
   try {
     const clips = src.clips.map(getClip).filter(Boolean), items = [];
@@ -3719,24 +3792,30 @@ async function runStt() {
     if (!items.length) throw new Error('沒有辨識到說話內容（可以換大一點的模型，或確認語言選對了）');
     items.sort((x, y) => x.start - y.start);
     for (let i = 0; i < items.length - 1; i++) items[i].end = Math.min(items[i].end, items[i + 1].start);   // 字幕不重疊
-    const r = exec('captions.addMany', { items: items.filter(it => it.end - it.start > .1), track, group: 'stt' + Date.now().toString(36), replace: $('sttReplace').checked });
-    const fmt = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`;
-    $('sttOut').value = items.map(it => `[${fmt(it.start)} → ${fmt(it.end)}] ${it.text}`).join('\n'); $('sttOut').hidden = false;
-    stat(`完成！${r}。${Stt.stop ? '（已停止，只放入辨識完成的部分）' : ''}點任一段字幕調好樣式後，按「套用到這份逐字稿」就能一次統一全部。`, 1);
-    switchTab('props'); seek(sec(items[0].start));
+    Stt.result = { items: items.filter(it => it.end - it.start > .1), track, applied: false };
+    sttRenderReview();
+    stat(`辨識完成，共 ${Stt.result.items.length} 句${Stt.stop ? '（已停止，只有辨識完成的部分）' : ''}。請核對下面的逐字稿，沒問題就按「✓ 套用到字幕軌」放到 ${track}。`, 1);
   } catch (e) { stat('語音轉文字失敗：' + (e?.message || e)); }
-  finally { Stt.busy = false; $('sttGo').hidden = false; $('sttGo').textContent = '重新辨識'; $('sttStop').hidden = true; $('sttClose').disabled = false; }
+  finally { Stt.busy = false; $('sttGo').hidden = false; $('sttGo').textContent = $('sttOv').classList.contains('reviewing') ? '重新辨識…' : '重新辨識'; $('sttStop').hidden = true; $('sttClose').disabled = false; }
 }
 $('tStt').onclick = () => openStt(UI.sel);
 $('sttEngine').onchange = () => { sttModels(); sttNote(); };
 $('sttLang').onchange = () => { const L = STT_LANGS.find(l => l.id === $('sttLang').value); $('sttMax').value = L?.cjk ? 16 : 42; sttNote(); };
-$('sttGo').onclick = runStt;
+// 核對中按「重新辨識…」：先把設定打開讓使用者調整，再按一次才開始
+$('sttGo').onclick = () => {
+  if ($('sttOv').classList.contains('reviewing')) { $('sttOv').classList.remove('reviewing'); $('sttReview').hidden = true; $('sttGo').textContent = '開始重新辨識'; $('sttGo').classList.add('primary'); return; }
+  runStt();
+};
+const sttTrackSync = v => { $('sttTrack').value = v; $('sttTrackR').value = v; if (Stt.result && !Stt.result.applied) $('sttApply').textContent = `✓ 套用到 ${v}（${Stt.result.items.length} 句）`; };
+$('sttTrack').onchange = e => sttTrackSync(e.target.value);
+$('sttTrackR').onchange = e => sttTrackSync(e.target.value);
 $('sttStop').onclick = () => { Stt.stop = true; $('sttStat').textContent = '停止中（等目前這一段辨識完）…'; };
-$('sttClose').onclick = () => { $('sttOv').hidden = true; };
+$('sttClose').onclick = sttClose;
+$('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
