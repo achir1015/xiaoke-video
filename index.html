@@ -145,7 +145,7 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 /* 監看螢幕 */
 .monitor{display:flex;flex-direction:column}
 .screen{flex:1;min-height:0;display:grid;place-items:center;background:#08090a;border-radius:0 0 0 0;position:relative;overflow:hidden}
-.screen canvas{max-width:100%;max-height:100%;background:#000;display:block;box-shadow:0 0 0 1px #ffffff10}
+.screen canvas{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);max-width:100%;max-height:100%;background:#000;display:block;box-shadow:0 0 0 1px #ffffff10}
 .transport{display:flex;align-items:center;gap:6px;padding:7px 10px;border-top:1px solid var(--line);flex-wrap:wrap}
 .tc{font-family:var(--f-mono);font-size:14px;font-variant-numeric:tabular-nums;color:var(--accent);min-width:8.5em}
 .tc small{color:var(--muted);font-size:11px}
@@ -2562,7 +2562,17 @@ function applyFormat() {
   $('fmt').value = doc.format;
   $('seqInfo').textContent = `${w}×${h}・${FPS} fps`;
   if (matchMedia('(max-width:980px)').matches) $('screen').style.aspectRatio = `${w}/${h}`; else $('screen').style.aspectRatio = '';
+  fitScreen();
 }
+// 監看畫面：整個畫面一定完整顯示在監看區裡（等比縮放，多的地方留黑邊），不會被切掉下方
+function fitScreen() {
+  const s = $('screen'), W = s.clientWidth, H = s.clientHeight;
+  if (!W || !H) return;
+  const k = Math.min(W / cv.width, H / cv.height);
+  cv.style.width = Math.max(1, Math.floor(cv.width * k)) + 'px';
+  cv.style.height = Math.max(1, Math.floor(cv.height * k)) + 'px';
+}
+if (window.ResizeObserver) new ResizeObserver(() => fitScreen()).observe($('screen'));
 function updateTC() { $('tc').innerHTML = `${tc(UI.playhead)} <small>/ ${tc(seqDur())}</small>`; }
 
 function renderBin() {
@@ -3820,7 +3830,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.4.3';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
