@@ -15,6 +15,7 @@
 畫面使用 Windows 11 內建的 Microsoft Edge WebView2 顯示。
 """
 import base64
+import http.server
 import json
 import os
 import platform
@@ -25,8 +26,10 @@ import threading
 import time
 import traceback
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
+from glob import escape as glob_escape
 from pathlib import Path
 
 import webview
@@ -122,11 +125,103 @@ class DesktopBridge:
         self._sessions: dict[str, SaveSession] = {}
         self._updater = Updater()
         self._stt: dict[str, bytearray] = {}
+        self._media = MediaServer()
+        self._projects = ProjectStore()
+        self.startup_path = ""   # 從檔案總管雙擊 .xkp 開啟時的專案路徑
         self.forced_save_dir: Path | None = None  # 自我測試時不跳對話框，直接存到這裡
 
     def attach(self, window):
         self._window = window
         self._updater.window = window
+
+    # ---- 專案檔（.xkp）與最近開啟 ----
+    PROJECT_TYPES = ("小柯專案 (*.xkp)", "舊版專案 (*.json)", "所有檔案 (*.*)")
+    MEDIA_TYPES = ("影片、音樂與圖片 (*.mp4;*.m4v;*.mov;*.webm;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp)", "所有檔案 (*.*)")
+
+    def _last_dir(self) -> Path:
+        for it in self._projects.recent():
+            if it.get("exists"):
+                return Path(it["path"]).parent
+        return AppInfo.default_save_dir()
+
+    def project_open(self, path: str = ""):
+        try:
+            if not path:
+                if self.forced_save_dir is not None:
+                    return {"status": "declined"}
+                r = self._window.create_file_dialog(webview.OPEN_DIALOG, directory=str(self._last_dir()), file_types=self.PROJECT_TYPES)
+                if not r:
+                    return {"status": "declined"}
+                path = r if isinstance(r, str) else r[0]
+            p = Path(path)
+            return {"status": "ok", "path": str(p), "text": p.read_text(encoding="utf-8")}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def project_save(self, text: str, name: str, path: str = "", save_as: bool = False):
+        try:
+            safe = "".join(c for c in str(name) if c not in '\\/:*?"<>|').strip() or "我的專案"
+            if path and not save_as:
+                p = Path(path)
+            elif self.forced_save_dir is not None:
+                p = self.forced_save_dir / (safe + ProjectStore.EXT)
+            else:
+                start = Path(path).parent if path else self._last_dir()
+                r = self._window.create_file_dialog(webview.SAVE_DIALOG, directory=str(start), save_filename=safe + ProjectStore.EXT, file_types=(self.PROJECT_TYPES[0],))
+                if not r:
+                    return {"status": "declined"}
+                p = Path(r if isinstance(r, str) else r[0])
+                if p.suffix.lower() != ProjectStore.EXT:
+                    p = p.with_name(p.name + ProjectStore.EXT)
+            tmp = p.with_name(p.name + ".part")
+            tmp.write_text(text, encoding="utf-8")
+            os.replace(tmp, p)
+            self._projects.touch(str(p), name)
+            return {"status": "ok", "path": str(p)}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def set_title(self, title: str):
+        try:
+            self._window.set_title(str(title))
+        except Exception:
+            pass
+        return True
+
+    def project_touch(self, path: str, name: str):
+        self._projects.touch(str(path), str(name))
+        return True
+
+    def project_recent(self):
+        return self._projects.recent()
+
+    def project_recent_remove(self, path: str):
+        self._projects.remove(str(path))
+        return True
+
+    def project_startup(self):
+        p, self.startup_path = self.startup_path, ""
+        return p
+
+    # ---- 素材檔：用電腦的「開啟」視窗選檔，記住完整路徑，專案開啟時自動載回 ----
+    def media_pick(self):
+        r = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=self.MEDIA_TYPES)
+        return [self._media.register(x) for x in (r or [])]
+
+    def media_register(self, path: str):
+        return self._media.register(str(path))
+
+    def media_find(self, name: str, folder: str):
+        """素材搬家了：在專案所在資料夾（含兩層子資料夾）找同名的檔案。"""
+        try:
+            base = Path(folder)
+            for depth in ("", "*/", "*/*/"):
+                for p in base.glob(depth + glob_escape(name)):
+                    if p.is_file():
+                        return self._media.register(str(p))
+        except Exception:
+            pass
+        return {"exists": False, "name": name}
 
     # ---- 本機 stt 服務（jianchang512/stt，faster-whisper）：網頁把 16kHz WAV 分段傳來，Python 轉送給 http://127.0.0.1:9977/api ----
     def stt_begin(self):
@@ -203,6 +298,166 @@ class DesktopBridge:
         else:
             os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
         return True
+
+
+class MediaServer:
+    """把電腦裡的影片、音樂、圖片交給網頁播放（只開放使用者選過的檔案）。
+    支援分段讀取（拖動播放頭、跳著看都順），並允許網頁讀取畫面（調色、去背、匯出需要）。"""
+
+    TYPES = {".mp4": "video/mp4", ".m4v": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm", ".mkv": "video/x-matroska",
+             ".mp3": "audio/mpeg", ".wav": "audio/wav", ".m4a": "audio/mp4", ".aac": "audio/aac", ".ogg": "audio/ogg", ".flac": "audio/flac", ".opus": "audio/ogg",
+             ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp"}
+
+    def __init__(self):
+        self.files: dict[str, Path] = {}
+        self.tokens: dict[str, str] = {}
+        server = self
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def do_OPTIONS(self):
+                self.send_response(204)
+                self._cors()
+                self.end_headers()
+
+            def _cors(self):
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Access-Control-Allow-Headers", "Range")
+                self.send_header("Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges")
+
+            def do_HEAD(self):
+                self.do_GET(head=True)
+
+            def do_GET(self, head=False):
+                parts = self.path.split("/")
+                p = server.files.get(parts[2]) if len(parts) > 2 and parts[1] == "m" else None
+                if not p or not p.is_file():
+                    self.send_response(404)
+                    self._cors()
+                    self.end_headers()
+                    return
+                size = p.stat().st_size
+                start, end = 0, size - 1
+                rng = self.headers.get("Range", "")
+                if rng.startswith("bytes="):
+                    a, _, b = rng[6:].split(",")[0].partition("-")
+                    if a:
+                        start, end = int(a), int(b) if b else size - 1
+                    elif b:
+                        start = max(0, size - int(b))
+                    end = min(end, size - 1)
+                    self.send_response(206)
+                    self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+                else:
+                    self.send_response(200)
+                self.send_header("Content-Type", MediaServer.TYPES.get(p.suffix.lower(), "application/octet-stream"))
+                self.send_header("Content-Length", str(end - start + 1))
+                self.send_header("Accept-Ranges", "bytes")
+                self._cors()
+                self.end_headers()
+                if head:
+                    return
+                try:
+                    with open(p, "rb") as fh:
+                        fh.seek(start)
+                        left = end - start + 1
+                        while left > 0:
+                            chunk = fh.read(min(1024 * 1024, left))
+                            if not chunk:
+                                break
+                            self.wfile.write(chunk)
+                            left -= len(chunk)
+                except (ConnectionError, OSError):
+                    pass   # 播放器常常中途改讀別的位置，連線被關掉是正常的
+
+        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+    def register(self, path: str) -> dict:
+        p = Path(path)
+        if not p.is_file():
+            return {"exists": False, "path": str(p), "name": p.name}
+        key = str(p.resolve())
+        token = self.tokens.get(key)
+        if not token:
+            token = uuid.uuid4().hex
+            self.tokens[key] = token
+            self.files[token] = p
+        return {"exists": True, "path": key, "name": p.name, "size": p.stat().st_size,
+                "url": f"http://127.0.0.1:{self.port}/m/{token}/{urllib.parse.quote(p.name)}"}
+
+
+class WebServer:
+    """提供 App 的網頁（固定埠號，瀏覽器裡的偏好設定與下載過的語音模型才會一直在）。
+    每次都要求瀏覽器重新確認檔案（no-cache），更新後馬上看到新版，不會用到舊的快取。"""
+
+    def __init__(self, folder: Path, port: int):
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            extensions_map = {**http.server.SimpleHTTPRequestHandler.extensions_map, ".webmanifest": "application/manifest+json", ".js": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml"}
+
+            def __init__(self, *a, **kw):
+                super().__init__(*a, directory=str(folder), **kw)
+
+            def end_headers(self):
+                self.send_header("Cache-Control", "no-cache")
+                super().end_headers()
+
+            def log_message(self, *a):
+                pass
+
+        class Server(http.server.ThreadingHTTPServer):
+            allow_reuse_address = False   # Windows 預設會讓兩個程式共用同一個埠，網頁可能被舊的小柯回應
+
+        try:
+            self.httpd = Server(("127.0.0.1", port), Handler)
+        except OSError:   # 埠號被占用（例如已經開著另一個小柯）就換一個空的
+            self.httpd = Server(("127.0.0.1", 0), Handler)
+        self.httpd.daemon_threads = True
+        self.port = self.httpd.server_address[1]
+        threading.Thread(target=self.httpd.serve_forever, daemon=True).start()
+
+
+class ProjectStore:
+    """專案檔（.xkp）與「最近開啟」清單（記錄路徑、專案名稱、時間，存在使用者資料夾的 recent.json）。"""
+
+    EXT = ".xkp"
+    MAX_RECENT = 15
+
+    def __init__(self):
+        self.file = AppInfo.data_dir() / "recent.json"
+        self.lock = threading.Lock()   # 網頁可能同時呼叫好幾次（各在自己的執行緒），讀寫要排隊
+
+    def _read(self) -> list:
+        try:
+            return json.loads(self.file.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
+    def _write(self, items: list):
+        tmp = self.file.with_name(self.file.name + ".part")
+        tmp.write_text(json.dumps(items, ensure_ascii=False, indent=1), encoding="utf-8")
+        os.replace(tmp, self.file)   # 一次換掉整個檔案，讀的人不會讀到寫一半的內容
+
+    def recent(self) -> list:
+        with self.lock:
+            items = self._read()
+        for it in items:
+            it["exists"] = Path(it.get("path", "")).is_file()
+        return items
+
+    def touch(self, path: str, name: str):
+        with self.lock:
+            items = [it for it in self._read() if it.get("path") != path]
+            items.insert(0, {"path": path, "name": name or Path(path).stem, "time": time.strftime("%Y-%m-%d %H:%M")})
+            self._write(items[: self.MAX_RECENT])
+
+    def remove(self, path: str):
+        with self.lock:
+            self._write([it for it in self._read() if it.get("path") != path])
 
 
 class SttClient:
@@ -408,6 +663,24 @@ class SelfTest:
       } catch (e) { window.__stt = { ok: false, msg: String(e && e.message || e) }; } })(); 'started'
     """
 
+    # 專案檔來回測試：用完整路徑匯入剛匯出的影片 → 編輯 → 另存 .xkp → 開新專案 → 重新開啟，檢查片段、素材、畫面狀態、最近開啟
+    JS_PROJECT = r"""
+    (async () => { const R = {}; try {
+        const api = window.pywebview.api, info = await api.media_register(%PATH%);
+        const [m] = await importPaths([info]); if (!m) throw new Error('用路徑匯入影片失敗');
+        doc.clips = []; exec('media.place', { mediaId: m.id, track: 'V1', start: 0 }); const cid = UI.sel;
+        exec('color.set', { clipId: cid, look: 'mono' }); exec('text.add', { text: '專案測試', start: 0, preset: 'td2' }); UI.sel = cid;
+        seek(sec(1)); await new Promise(r => setTimeout(r, 800)); draw(UI.playhead); ctx.getImageData(0, 0, 1, 1);   // 本機檔案畫到畫布後仍可讀取
+        const before = JSON.stringify(doc.clips); UI.pps = 123;
+        if (!(await projSave(true))) throw new Error('儲存失敗'); const path = Proj.path; R.file = path.split(/[\\/]/).pop();
+        Proj.dirty = false; projNew('空白專案', 'hd720'); if (doc.clips.length) throw new Error('新專案不是空的');
+        await projOpenPath(path);
+        R.clips = JSON.stringify(doc.clips) === before; R.media = Media.get(m.id)?.path === m.path; R.ui = UI.pps === 123 && UI.sel === cid;
+        R.recent = (await api.project_recent()).some(x => x.path === path); await api.project_recent_remove(path);
+        R.ok = R.clips && R.media && R.ui && R.recent && R.file.endsWith('.xkp');
+      } catch (e) { R.ok = false; R.msg = String(e && e.message || e); } window.__proj = R; })(); 'started'
+    """
+
     def __init__(self, window, bridge: DesktopBridge, report_path: Path):
         self.window = window
         self.bridge = bridge
@@ -444,6 +717,15 @@ class SelfTest:
             exported = Path(state.get("path") or "")
             report["export_file_ok"] = bool(state.get("state") == "done" and exported.is_file() and exported.stat().st_size > 1000)
             self.screenshot("selftest-export.png")
+            report["project"] = {"ok": False, "msg": "沒有匯出檔可測"}
+            if report["export_file_ok"]:
+                self.window.evaluate_js(self.JS_PROJECT.replace("%PATH%", json.dumps(str(exported))))
+                for _ in range(120):
+                    time.sleep(0.5)
+                    r = self.window.evaluate_js("window.__proj || null")
+                    if r:
+                        report["project"] = r
+                        break
             # 網頁和程式的版本號要一致；更新檢查只記錄結果（沒網路時不算失敗）
             report["version_match"] = self.window.evaluate_js("APP_VERSION") == APP_VERSION
             report["update_check"] = self.bridge.check_update()
@@ -453,7 +735,7 @@ class SelfTest:
                 report["stt_check"] = self.window.evaluate_js("window.__stt || null")
                 if report["stt_check"]:
                     break
-            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"])
+            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"] and report["project"].get("ok"))
         except Exception:
             report["error"] = traceback.format_exc()
         finally:
@@ -487,8 +769,10 @@ def main():
         raise SystemExit(f"找不到網頁檔案：{index}")
 
     bridge = DesktopBridge()
+    # 在檔案總管／Finder 雙擊 .xkp：專案路徑會當成參數傳進來
+    bridge.startup_path = next((a for a in args if not a.startswith("--") and a.lower().endswith((ProjectStore.EXT, ".json")) and Path(a).is_file()), "")
     window = webview.create_window(
-        APP_NAME, url=str(index), js_api=bridge,
+        APP_NAME, url=f"http://127.0.0.1:{WebServer(index.parent, HTTP_PORT).port}/index.html?v={APP_VERSION}", js_api=bridge,
         width=1440, height=900, min_size=(1024, 640),
         background_color="#111417", maximized=selftest_path is None,
     )
@@ -500,6 +784,23 @@ def main():
 
     tester = SelfTest(window, bridge, selftest_path) if selftest_path is not None else None
 
+    # 拖曳檔案進視窗：pywebview 會補上完整路徑，交給網頁匯入（專案就能記住檔案位置）
+    def on_loaded():
+        try:
+            from webview.dom import DOMEventHandler
+
+            def on_drop(e):
+                paths = [f.get("pywebviewFullPath") for f in (e.get("dataTransfer") or {}).get("files", []) if f.get("pywebviewFullPath")]
+                if paths:
+                    items = [bridge.media_register(p) for p in paths]
+                    window.evaluate_js(f"window.kkDropPaths && kkDropPaths({json.dumps(items, ensure_ascii=False)})")
+
+            window.dom.document.events.drop += DOMEventHandler(on_drop, prevent_default=True)
+        except Exception:
+            pass   # 舊版 pywebview 沒有這個功能：拖曳的檔案就不會記住路徑
+
+    window.events.loaded += on_loaded
+
     def on_start():
         if not IS_MAC:
             DisplayScale.fit(window)
@@ -510,7 +811,7 @@ def main():
 
     # Windows 用 Edge WebView2；Mac 用系統內建的 WebKit（和 Safari 同一個引擎）
     webview.start(
-        func, gui=None if IS_MAC else "edgechromium", http_server=True, http_port=HTTP_PORT,
+        func, gui=None if IS_MAC else "edgechromium",
         private_mode=False, storage_path=str(AppInfo.data_dir() / "webview"),
         debug=False,
     )

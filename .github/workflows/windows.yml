@@ -152,7 +152,8 @@ jobs:
       - name: PyInstaller 打包成 .app
         working-directory: windows
         run: |
-          python -m PyInstaller --noconfirm --clean --windowed --name XiaokeVideo --icon app.icns --add-data "web:web" \
+          # --argv-emulation：在 Finder 雙擊 .xkp 時，專案路徑會傳給程式
+          python -m PyInstaller --noconfirm --clean --windowed --name XiaokeVideo --icon app.icns --add-data "web:web" --argv-emulation \
             --osx-bundle-identifier org.achir1015.xiaokevideo --distpath ../dist --workpath ../build app.py
           cd ../dist
           mv XiaokeVideo.app "小柯影音剪輯助手.app"
@@ -161,6 +162,9 @@ jobs:
           plutil -replace CFBundleShortVersionString -string "${{ steps.ver.outputs.ver }}" "$P"
           plutil -replace CFBundleVersion -string "${{ steps.ver.outputs.ver }}" "$P"
           plutil -replace NSHighResolutionCapable -bool true "$P"
+          # 宣告 .xkp 專案檔類型，Finder 才能用小柯開啟
+          plutil -replace UTExportedTypeDeclarations -json '[{"UTTypeIdentifier":"org.achir1015.xiaokevideo.project","UTTypeDescription":"小柯影音剪輯專案","UTTypeConformsTo":["public.data","public.content"],"UTTypeTagSpecification":{"public.filename-extension":["xkp"]}}]' "$P"
+          plutil -replace CFBundleDocumentTypes -json '[{"CFBundleTypeName":"小柯影音剪輯專案","CFBundleTypeRole":"Editor","LSHandlerRank":"Owner","LSItemContentTypes":["org.achir1015.xiaokevideo.project"]}]' "$P"
           codesign --force --deep -s - "小柯影音剪輯助手.app"
           du -sh "小柯影音剪輯助手.app"
 

@@ -33,6 +33,8 @@ MinVersion=10.0.17763
 ; App 內「立即更新」執行新版安裝程式時，舊版可能還沒完全關閉：自動關掉它再覆蓋
 CloseApplications=force
 RestartApplications=no
+; 讓 .xkp 專案檔可以在檔案總管雙擊開啟
+ChangesAssociations=yes
 
 [Languages]
 #ifexist "ChineseTraditional.isl"
@@ -53,6 +55,13 @@ Name: "desktopicon"; Description: "在桌面建立捷徑"; GroupDescription: "�
 
 [Files]
 Source: "..\dist\XiaokeVideo\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[Registry]
+; 專案檔 .xkp：圖示用 App 圖示，雙擊用小柯開啟（裝在使用者自己的設定裡，不需要系統管理員權限）
+Root: HKA; Subkey: "Software\Classes\.xkp"; ValueType: string; ValueName: ""; ValueData: "XiaokeVideo.Project"; Flags: uninsdeletevalue
+Root: HKA; Subkey: "Software\Classes\XiaokeVideo.Project"; ValueType: string; ValueName: ""; ValueData: "小柯影音剪輯專案"; Flags: uninsdeletekey
+Root: HKA; Subkey: "Software\Classes\XiaokeVideo.Project\DefaultIcon"; ValueType: string; ValueName: ""; ValueData: "{app}\{#AppExe},0"
+Root: HKA; Subkey: "Software\Classes\XiaokeVideo.Project\shell\open\command"; ValueType: string; ValueName: ""; ValueData: """{app}\{#AppExe}"" ""%1"""
 
 [Icons]
 Name: "{autoprograms}\{#AppName}"; Filename: "{app}\{#AppExe}"
