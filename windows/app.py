@@ -24,6 +24,7 @@ import tempfile
 import threading
 import time
 import traceback
+import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
@@ -120,11 +121,30 @@ class DesktopBridge:
         self._window = None
         self._sessions: dict[str, SaveSession] = {}
         self._updater = Updater()
+        self._stt: dict[str, bytearray] = {}
         self.forced_save_dir: Path | None = None  # 自我測試時不跳對話框，直接存到這裡
 
     def attach(self, window):
         self._window = window
         self._updater.window = window
+
+    # ---- 本機 stt 服務（jianchang512/stt，faster-whisper）：網頁把 16kHz WAV 分段傳來，Python 轉送給 http://127.0.0.1:9977/api ----
+    def stt_begin(self):
+        token = uuid.uuid4().hex
+        self._stt[token] = bytearray()
+        return token
+
+    def stt_chunk(self, token: str, b64: str):
+        if token not in self._stt:
+            return {"status": "error", "message": "工作不存在"}
+        self._stt[token] += base64.b64decode(b64)
+        return {"status": "ok"}
+
+    def stt_run(self, token: str, model: str, language: str):
+        data = self._stt.pop(token, None)
+        if data is None:
+            return {"status": "error", "message": "工作不存在"}
+        return SttClient.transcribe(bytes(data), str(model), str(language))
 
     def check_update(self):
         return self._updater.check()
@@ -183,6 +203,38 @@ class DesktopBridge:
         else:
             os.startfile(str(target))  # noqa: S606 — 只開啟資料夾
         return True
+
+
+class SttClient:
+    """呼叫本機 stt 服務的 /api（回傳 json：[{line, start_time "時:分:秒,毫秒", end_time, text}]），轉成秒數。"""
+
+    URL = "http://127.0.0.1:9977/api"
+
+    @staticmethod
+    def _sec(t: str) -> float:
+        h, m, s = str(t).replace(",", ".").split(":")
+        return int(h) * 3600 + int(m) * 60 + float(s)
+
+    @classmethod
+    def transcribe(cls, wav: bytes, model: str, language: str):
+        boundary = "----xiaoke" + uuid.uuid4().hex
+        parts = []
+        for k, v in (("model", model), ("language", language), ("response_format", "json")):
+            parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode())
+        parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="xiaoke.wav"\r\nContent-Type: audio/wav\r\n\r\n'.encode() + wav + b"\r\n")
+        parts.append(f"--{boundary}--\r\n".encode())
+        req = urllib.request.Request(cls.URL, data=b"".join(parts), headers={"Content-Type": f"multipart/form-data; boundary={boundary}"})
+        try:
+            with urllib.request.urlopen(req, timeout=3600) as r:
+                res = json.load(r)
+        except urllib.error.URLError as e:
+            return {"status": "error", "message": f"連不到本機 stt 服務（{e.reason}）。請先執行 stt 的 start.exe，確認網址是 127.0.0.1:9977"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+        if res.get("code") != 0:
+            return {"status": "error", "message": f"stt 回報錯誤：{res.get('msg')}"}
+        items = [{"start": cls._sec(x["start_time"]), "end": cls._sec(x["end_time"]), "text": x.get("text", "")} for x in (res.get("data") or [])]
+        return {"status": "ok", "items": items}
 
 
 class Updater:
@@ -311,6 +363,9 @@ class SelfTest:
       step('綠幕自動去背', () => { seek(sec(1)); const r = exec('media.place', { mediaId: 'gs3' }); if (!getClip(UI.sel).key?.on) throw new Error('沒有自動開啟去背'); draw(sec(1.5)); return r; });
       step('蒙版', () => { const r = exec('clip.mask', { clipId: UI.sel, mask: 'heart', feather: 10 }); draw(sec(1.5)); return r; });
       step('3D 立體字幕', () => { const r = exec('text.add', { text: '3D 測試', start: 1, preset: 'td3' }); draw(sec(2)); return r; });
+      step('逐字稿批次字幕＋統一樣式', () => { exec('captions.addMany', { items: [{ start: 1, end: 2, text: '第一句' }, { start: 2.5, end: 4, text: '第二句' }], track: 'T3', group: 'selftest' }); const c = doc.clips.find(x => x.text?.group === 'selftest');
+        exec('text.set', { clipId: c.id, size: 8, color: '#ffd400', bgColor: '#123456', bgOpacity: 70 }); const r = exec('text.applyStyle', { clipId: c.id, scope: 'group' });
+        const g = doc.clips.filter(x => x.text?.group === 'selftest'); if (g.some(x => x.text.color !== '#ffd400' || x.text.bgColor !== '#123456') || g.map(x => x.text.content).join() !== '第一句,第二句') throw new Error('樣式或文字不對'); return r; });
       step('網頁版本號', () => APP_VERSION);
       step('畫面合成', () => { draw(sec(2)); const p = ctx.getImageData(cv.width / 2, cv.height / 2, 1, 1).data; return [...p].join(','); });
       step('錄影格式', () => { const ok = MIMES.filter(m => window.MediaRecorder && MediaRecorder.isTypeSupported(m[0])).map(m => m[1]); if (!ok.length) throw new Error('不支援錄影'); return ok.join('、'); });
@@ -343,6 +398,14 @@ class SelfTest:
       }, 300);
       return 'started';
     })()
+    """
+
+    # 語音轉文字引擎：載入最小的 Whisper 模型並辨識 2 秒聲音（需要網路下載模型；只記錄結果，不影響測試通過與否）
+    JS_STT = r"""
+    (async () => { try { const t0 = performance.now(); await sttWorker(); await sttCall({ type: 'load', model: 'tiny' });
+        const a = new Float32Array(32000); for (let i = 0; i < a.length; i++) a[i] = Math.sin(i / 8) * .1;
+        const r = await sttCall({ type: 'run', audio: a, language: 'chinese' }, [a.buffer]); window.__stt = { ok: true, ms: Math.round(performance.now() - t0), chunks: r.chunks.length };
+      } catch (e) { window.__stt = { ok: false, msg: String(e && e.message || e) }; } })(); 'started'
     """
 
     def __init__(self, window, bridge: DesktopBridge, report_path: Path):
@@ -384,6 +447,12 @@ class SelfTest:
             # 網頁和程式的版本號要一致；更新檢查只記錄結果（沒網路時不算失敗）
             report["version_match"] = self.window.evaluate_js("APP_VERSION") == APP_VERSION
             report["update_check"] = self.bridge.check_update()
+            self.window.evaluate_js(self.JS_STT)
+            for _ in range(240):   # 最多等 120 秒（第一次要下載約 40MB 的模型）
+                time.sleep(0.5)
+                report["stt_check"] = self.window.evaluate_js("window.__stt || null")
+                if report["stt_check"]:
+                    break
             report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"])
         except Exception:
             report["error"] = traceback.format_exc()

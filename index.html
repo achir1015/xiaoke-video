@@ -366,6 +366,7 @@ textarea{resize:vertical;width:100%}
       <button class="btn ghost" id="tDup" title="複製一份接在後面 (D)">複製 <kbd>D</kbd></button>
       <button class="btn ghost" id="tGap" title="移除所有軌道上的空隙">移除空隙</button>
       <button class="btn ghost" id="tText" title="在播放頭加一句字幕 (T)">＋字幕 <kbd>T</kbd></button>
+      <button class="btn ghost" id="tStt" title="先點選影片或音訊片段，再把說話內容轉成對齊時間軸的字幕">🎙 語音轉文字</button>
       <span class="sep"></span>
       <label><input type="checkbox" id="snap" checked> 吸附</label>
       <span class="spacer"></span>
@@ -397,6 +398,30 @@ textarea{resize:vertical;width:100%}
       <button class="btn" id="exCancel" hidden>取消匯出</button>
       <button class="btn" id="exSave" hidden>儲存到電腦</button>
       <button class="btn primary" id="exGo">開始匯出</button>
+    </div>
+  </div>
+</div>
+
+<div class="ov" id="sttOv" hidden>
+  <div class="dlg" role="dialog" aria-labelledby="sttTitle">
+    <h3 id="sttTitle">🎙 語音轉文字（自動字幕）</h3>
+    <div class="grid">
+      <label for="sttSrc">聲音來源</label><select id="sttSrc"></select>
+      <label for="sttLang">語言</label><select id="sttLang"></select>
+      <label for="sttEngine">辨識引擎</label><select id="sttEngine"></select>
+      <label for="sttModel">模型</label><select id="sttModel"></select>
+      <label for="sttTrack">放到字幕軌</label><select id="sttTrack"><option value="T1">T1 字幕 1（一般文字軌）</option><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option></select>
+      <label for="sttMax">每段最多字數</label><input type="number" id="sttMax" value="16" min="6" max="60">
+      <span></span><label><input type="checkbox" id="sttReplace" checked> 先清掉這條字幕軌上同一時段的舊字幕</label>
+    </div>
+    <p class="note" id="sttNote"></p>
+    <div class="bar"><i id="sttBar"></i></div>
+    <p class="note" id="sttStat"></p>
+    <textarea id="sttOut" rows="6" readonly hidden style="width:100%;font-size:12px"></textarea>
+    <div class="row2" style="justify-content:flex-end;margin-top:12px">
+      <button class="btn" id="sttClose">關閉</button>
+      <button class="btn" id="sttStop" hidden>停止</button>
+      <button class="btn primary" id="sttGo">開始辨識</button>
     </div>
   </div>
 </div>
@@ -799,7 +824,7 @@ defCmd('text.add', '加字幕／標題', '{text, start?秒(預設播放頭), dur
   overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c); UI.sel = c.id;
   return `在 ${track} 加了字幕 #${c.id}：「${content}」`;
 });
-defCmd('text.set', '修改文字', '{clipId?|clipIds?|all?, text?, size?(畫面高度的%), color?(#hex), position?:"top"|"center"|"bottom"(快速定位), x?(0~100，畫面寬度%，文字中心), y?(0~100，畫面高度%，文字中心), background?:bool, bold?:bool}', p => {
+defCmd('text.set', '修改文字', '{clipId?|clipIds?|all?, text?, size?(畫面高度的%), color?(#hex 文字顏色), position?:"top"|"center"|"bottom"(快速定位), x?(0~100，畫面寬度%，文字中心), y?(0~100，畫面高度%，文字中心), background?:bool(底框), bgColor?(#hex 底框顏色), bgOpacity?(0~100 底框不透明度), bold?:bool}', p => {
   const list = targets(Object.assign({ type: 'text' }, p)).filter(c => c.type === 'text');
   if (!list.length) throw new Error('請選一個字幕片段');
   for (const c of list) {
@@ -812,6 +837,8 @@ defCmd('text.set', '修改文字', '{clipId?|clipIds?|all?, text?, size?(畫面�
     if (p.y != null) c.text.y = clamp(Number(p.y), 0, 100);
     delete c.text.pos;
     if (p.background != null) c.text.bg = !!p.background;
+    if (p.bgColor != null && /^#[0-9a-f]{6}$/i.test(p.bgColor)) { c.text.bgColor = p.bgColor; c.text.bg = true; }
+    if (p.bgOpacity != null) c.text.bgOpacity = clamp(Number(p.bgOpacity), 0, 100);
     if (p.bold != null) c.text.bold = !!p.bold;
   }
   return `更新了 ${list.length} 個字幕`;
@@ -850,17 +877,39 @@ defCmd('gen.set', '修改片頭／片尾文字', '{clipId?, title?, sub?(副標�
   if (p.accent != null && /^#[0-9a-f]{6}$/i.test(p.accent)) c.gen.accent = p.accent;
   return '已更新片頭／片尾文字';
 });
-defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1)}', p => {
+defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1), group?(同一份逐字稿的代號，之後可一起改樣式), replace?:bool(先清掉這條軌上同一時間範圍的舊字幕)}', p => {
   const track = TEXT_TRACKS.includes(p.track) ? p.track : 'T1';
-  const items = Array.isArray(p.items) ? p.items : [];
+  const items = (Array.isArray(p.items) ? p.items : []).filter(it => Number(it.end) > Number(it.start));
   if (!items.length) throw new Error('沒有字幕內容');
-  for (const it of items.slice(0, 500)) {
-    const s = sec(Number(it.start) || 0), e = sec(Number(it.end) || 0);
-    if (!(e > s)) continue;
-    const c = makeClip('text', track, s, e - s, { text: textDefaults(String(it.text || '')) });
-    overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c);
+  if (p.replace) {
+    const s0 = sec(Math.min(...items.map(it => Number(it.start)))), e0 = sec(Math.max(...items.map(it => Number(it.end))));
+    doc.clips = doc.clips.filter(c => !(c.track === track && c.start < e0 && clipEnd(c) > s0));
   }
-  return `加入 ${items.length} 句字幕`;
+  let first = null;
+  for (const it of items.slice(0, 2000)) {
+    const s = sec(Number(it.start) || 0), e = sec(Number(it.end) || 0);
+    const c = makeClip('text', track, s, e - s, { text: textDefaults(String(it.text || '')) });
+    if (p.group) c.text.group = String(p.group);
+    overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c); first = first || c;
+  }
+  if (first) UI.sel = first.id;
+  return `加入 ${items.length} 句字幕到 ${track}`;
+});
+// 用一段字幕當範本：把它的樣式（字級、顏色、底框、位置、動畫、3D）套到其他字幕，文字內容不變
+const STYLE_KEYS = ['size', 'color', 'bg', 'bgColor', 'bgOpacity', 'bold', 'x', 'y', 'style'];
+defCmd('text.applyStyle', '套用字幕樣式（文字不變）', '{clipId?(範本字幕，預設目前選取), scope?:"group"(同一份逐字稿，預設)|"track"(同一條字幕軌)|"all"(全部字幕), anim?:bool(連動畫一起，預設true)}', p => {
+  const src = target(p);
+  if (src.type !== 'text') throw new Error('請先選一段字幕當範本');
+  const scope = p.scope || (src.text.group ? 'group' : 'track');
+  const list = doc.clips.filter(c => c.type === 'text' && c !== src && (scope === 'all' || (scope === 'track' ? c.track === src.track : c.text.group && c.text.group === src.text.group)));
+  if (!list.length) throw new Error(scope === 'group' ? '這段字幕不是語音轉文字產生的，請改用「同一條字幕軌」' : '沒有其他字幕可以套用');
+  textXY(src.text);
+  for (const c of list) {
+    for (const k of STYLE_KEYS) { if (src.text[k] === undefined) delete c.text[k]; else c.text[k] = structuredClone(src.text[k]); }
+    delete c.text.pos;
+    if (p.anim !== false) { if (src.text.anim) c.text.anim = structuredClone(src.text.anim); else delete c.text.anim; if (src.text.d3) c.text.d3 = structuredClone(src.text.d3); else delete c.text.d3; }
+  }
+  return `已把樣式套用到 ${list.length} 段字幕（文字內容沒有改變）`;
 });
 defCmd('sequence.setFormat', '畫面比例', '{format:"hd720"|"hd1080"|"vert"|"square"}', p => {
   if (!FORMATS[p.format]) throw new Error('不支援的格式');
@@ -2346,7 +2395,7 @@ function drawText(c, t) {
     }
     if (tx.bg) {
       const w = ctx.measureText(shown).width + size * .8;
-      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillStyle = hexA(tx.bgColor || '#000000', (tx.bgOpacity ?? 60) / 100);
       ctx.beginPath(); ctx.roundRect ? ctx.roundRect(lx - size * .4, y - lh / 2 + 2, w, lh - 4, size * .2) : ctx.rect(lx - size * .4, y - lh / 2 + 2, w, lh - 4); ctx.fill();
     } else {
       ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(2, size * .14); ctx.strokeStyle = 'rgba(0,0,0,.85)'; ctx.strokeText(shown, lx, y);
@@ -2540,8 +2589,9 @@ function renderInspector() {
         ${rng('tx', '左右', Math.round(c.text.x), 0, 100, 1, '%')}${rng('ty', '上下', Math.round(c.text.y), 0, 100, 1, '%')}
         <p class="note">也可以在監看畫面上<b>按住字幕直接拖曳</b>到想要的位置（靠近正中央或上中下會自動吸附）。</p>
         <div class="field"><label>放在軌道</label><div class="seg" data-seg="track">${TEXT_TRACKS.map(tr => `<button data-v="${tr}" aria-pressed="${c.track === tr}">${tr}</button>`).join('')}</div><span></span></div>
-        <div class="field"><label for="f_color">顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
-        <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 黑色底框</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div></div>`;
+        <div class="field"><label for="f_color">文字顏色</label><input type="color" id="f_color" value="${c.text.color}"><span></span></div>
+        <div class="row2"><label><input type="checkbox" id="f_bg" ${c.text.bg ? 'checked' : ''}> 底框（背景色）</label><label><input type="checkbox" id="f_bold" ${c.text.bold ? 'checked' : ''}> 粗體</label></div>
+        ${c.text.bg ? `<div class="field"><label for="f_bgc">底框顏色</label><input type="color" id="f_bgc" value="${c.text.bgColor || '#000000'}"><span></span></div>${rng('bgOp', '底框濃度', c.text.bgOpacity ?? 60, 0, 100, 1, '%')}` : ''}</div>`;
       const d3 = c.text.d3;
       h += `<div class="sec"><h4>文字類型 ${d3 ? '<button class="btn ghost" data-act="d3Preview" style="padding:2px 6px">▶ 預覽</button>' : ''}</h4>
         <div class="field"><label>類型</label><div class="seg" data-seg="d3on"><button data-v="0" aria-pressed="${!d3}">一般文字</button><button data-v="1" aria-pressed="${!!d3}">3D 立體</button></div><span></span></div>
@@ -2556,6 +2606,10 @@ function renderInspector() {
         <div class="field"><label for="f_aout">結束動畫</label><select id="f_aout">${Object.entries(ANIM_OUT).map(([k, v]) => `<option value="${k}" ${an.out === k ? 'selected' : ''}>${v.name}</option>`).join('')}</select><span></span></div>
         ${an.out !== 'none' ? rng('aoutDur', '結束秒數', an.outDur, .1, Math.min(5, toSec(c.dur)), .1, 's') : ''}
         <div class="row2"><button class="btn" data-act="animAll">把這組動畫套用到全部字幕</button></div></div>`;
+      const grp = c.text.group, nGrp = grp ? doc.clips.filter(x => x.type === 'text' && x.text.group === grp).length : 0, nTrk = doc.clips.filter(x => x.type === 'text' && x.track === c.track).length;
+      h += `<div class="sec"><h4>統一套用樣式（每段文字不變）</h4>
+        <p class="note">先把這一段的字級、文字顏色、底框顏色、位置、開始／結束動畫調好，再按下面的按鈕，其他字幕會改成一樣的樣式，但每段的文字內容都保持原樣。</p>
+        <div class="row2" style="flex-wrap:wrap">${grp ? `<button class="btn primary" data-act="styleGroup">套用到這份逐字稿（${nGrp} 段）</button>` : ''}<button class="btn" data-act="styleTrack">套用到 ${c.track} 全部（${nTrk} 段）</button><button class="btn" data-act="styleAll">套用到全部字幕</button></div></div>`;
     }
     if (c.type === 'gen' && TPL[c.gen?.kind]) {
       const tpl = TPL[c.gen.kind], g = c.gen;
@@ -2566,7 +2620,8 @@ function renderInspector() {
         ${tpl.anim === 'roll' ? '<p class="note">名單每一行一個項目，會由下往上捲動。</p>' : ''}</div>`;
     }
     if (c.type === 'video' || c.type === 'audio') h += `<div class="sec"><h4>速度與音量</h4>${rng('speed', '速度', c.speed, .25, 4, .25, '×')}${rng('volume', '音量', Math.round(c.volume * 100), 0, 200, 1, '%')}
-      <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>`;
+      <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>
+      <div class="sec"><h4>語音轉文字</h4><p class="note">把這段的說話內容辨識成逐字稿，依時間軸對齊後放進字幕軌，每一句一段文字塊。</p><div class="row2"><button class="btn primary" data-act="stt">🎙 語音轉文字</button></div></div>`;
     if (c.type !== 'text' && c.type !== 'audio') {
       const tr = c.trans || { type: 'none', dur: 1 }, A = prevAdjacent(c);
       h += `<div class="sec" id="secTrans"><h4>轉場（從前一段進到這段）<button class="btn ghost" data-act="transPreview" style="padding:2px 6px">▶ 預覽</button></h4>
@@ -2985,7 +3040,7 @@ const PROP_MAP = { speed: ['clip.set', v => ({ speed: v })], volume: ['clip.set'
   scale: ['clip.set', v => ({ scale: v })], x: ['clip.set', v => ({ x: v })], y: ['clip.set', v => ({ y: v })], rotation: ['clip.set', v => ({ rotation: v })], opacity: ['clip.set', v => ({ opacity: v })],
   size: ['text.set', v => ({ size: v })], tx: ['text.set', v => ({ x: v })], transDur: ['clip.transition', v => ({ duration: v })], ainDur: ['text.anim', v => ({ inDur: v })], aoutDur: ['text.anim', v => ({ outDur: v })], ty: ['text.set', v => ({ y: v })], exposure: ['color.set', v => ({ exposure: v })], contrast: ['color.set', v => ({ contrast: v })], saturation: ['color.set', v => ({ saturation: v })],
   temperature: ['color.set', v => ({ temperature: v })], vignette: ['color.set', v => ({ vignette: v })],
-  d3depth: ['text.d3', v => ({ depth: v })], feather: ['clip.mask', v => ({ feather: v })], keyAmt: ['clip.key', v => ({ amount: v })] };
+  d3depth: ['text.d3', v => ({ depth: v })], bgOp: ['text.set', v => ({ bgOpacity: v })], feather: ['clip.mask', v => ({ feather: v })], keyAmt: ['clip.key', v => ({ amount: v })] };
 for (const pane of ['pProps', 'pColor']) {
   $(pane).addEventListener('input', e => {
     const k = e.target.dataset.k, id = UI.sel;
@@ -2997,6 +3052,7 @@ for (const pane of ['pProps', 'pColor']) {
     else if (e.target.id === 'f_gtitle') tryExec('gen.set', { clipId: id, title: e.target.value }, { coalesce: 'gt' + id, light: true });
     else if (e.target.id === 'f_gsub') tryExec('gen.set', { clipId: id, sub: e.target.value }, { coalesce: 'gs' + id, light: true });
     else if (e.target.id === 'f_gacc') tryExec('gen.set', { clipId: id, accent: e.target.value }, { coalesce: 'ga' + id, light: true });
+    else if (e.target.id === 'f_bgc') tryExec('text.set', { clipId: id, bgColor: e.target.value }, { coalesce: 'bgc' + id, light: true });
     else if (e.target.id === 'f_d3f1') tryExec('text.d3', { clipId: id, face: e.target.value }, { coalesce: 'd3f1' + id, light: true });
     else if (e.target.id === 'f_d3f2') tryExec('text.d3', { clipId: id, face2: e.target.value }, { coalesce: 'd3f2' + id, light: true });
     else if (e.target.id === 'f_d3s') tryExec('text.d3', { clipId: id, side: e.target.value }, { coalesce: 'd3s' + id, light: true });
@@ -3031,6 +3087,8 @@ for (const pane of ['pProps', 'pColor']) {
     if (act === 'transAll') { const c = getClip(id); const tr = c?.trans; if (tr && tr.type !== 'none') { const r = tryExec('clip.transition', { all: true, type: tr.type, duration: tr.dur }); if (r) toast(r.replace('設定了', '已套用到')); } else toast('先幫這段選一個轉場'); }
     if (act === 'animPreview') previewAnim(id);
     if (act === 'd3Preview') previewD3(id);
+    if (act === 'styleGroup' || act === 'styleTrack' || act === 'styleAll') { const r = tryExec('text.applyStyle', { clipId: id, scope: { styleGroup: 'group', styleTrack: 'track', styleAll: 'all' }[act] }); if (r) toast(r); }
+    if (act === 'stt') openStt(id);
     if (act === 'animAll') { const c = getClip(id); const a = c?.text?.anim; if (a) { tryExec('text.anim', { all: true, in: a.in, out: a.out, inDur: a.inDur, outDur: a.outDur }); toast('已套用到全部字幕'); } }
     if (act === 'split') tryExec('timeline.split', { clipId: id });
     if (act === 'dup') tryExec('timeline.duplicate', { clipId: id });
@@ -3138,7 +3196,7 @@ cv.addEventListener('pointerup', endCanvasDrag); cv.addEventListener('pointercan
 // 鍵盤快捷鍵
 document.addEventListener('keydown', e => {
   if (e.target.closest('input,textarea,select') && e.target.type !== 'range' && e.target.type !== 'checkbox') return;
-  if (!$('exportOv').hidden || !$('keysOv').hidden || !$('updOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; $('updOv').hidden = true; } return; }
+  if (!$('exportOv').hidden || !$('keysOv').hidden || !$('updOv').hidden || !$('sttOv').hidden) { if (e.key === 'Escape') { if (!UI.exporting) $('exportOv').hidden = true; $('keysOv').hidden = true; $('updOv').hidden = true; if (!Stt.busy) $('sttOv').hidden = true; } return; }
   const mod = e.ctrlKey || e.metaKey, k = e.key.toLowerCase();
   if (mod && k === 'z') { e.preventDefault(); toast(e.shiftKey ? redo() : undo()); return; }
   if (mod && k === 'y') { e.preventDefault(); toast(redo()); return; }
@@ -3163,9 +3221,304 @@ document.addEventListener('keydown', e => {
 });
 window.addEventListener('resize', () => applyFormat());
 
+// ---------- 語音轉文字（自動字幕）----------
+// 先點選影片或音訊片段（或在對話框選整條軌道），辨識說話內容，依時間軸對齊後放進字幕軌，每句一段文字塊。
+// 內建引擎：Whisper 語音辨識模型直接在瀏覽器裡跑（transformers.js），線上版、Windows、Mac、iPad 都能用；模型第一次下載後就能離線使用。
+// 本機 stt 服務：jianchang512/stt（faster-whisper）開著時，桌面版可以把聲音交給它辨識，可用更大的模型。
+const STT_LANGS = [
+  { id: 'zh-TW', name: '繁體語（台灣國語）', whisper: 'chinese', stt: 'zh', conv: 'tw', cjk: true },
+  { id: 'zh-CN', name: '北京語（簡體中文）', whisper: 'chinese', stt: 'zh', conv: 'cn', cjk: true },
+  { id: 'yue', name: '香港語（粵語）', whisper: 'cantonese', fallback: 'chinese', stt: 'yue', conv: 'hk', cjk: true },
+  { id: 'nan', name: '台灣語（台語）', whisper: 'chinese', stt: 'zh', conv: 'tw', cjk: true, note: '語音模型沒有台語，會用中文字寫出大意，準確度有限。' },
+  { id: 'en', name: '美語（英文）', whisper: 'english', stt: 'en' },
+  { id: 'ja', name: '日語', whisper: 'japanese', stt: 'ja', cjk: true },
+  { id: 'ko', name: '韓語', whisper: 'korean', stt: 'ko' },
+  { id: 'hi', name: '印度語（印地語）', whisper: 'hindi', stt: 'hi' },
+];
+const STT_MODELS = {
+  browser: [['tiny', '小（下載約 40MB，最快，準確度普通）'], ['base', '中（約 75MB，快）'], ['small', '大（約 240MB，最準，速度約與片長相同）']],
+  stt: [['tiny', 'tiny'], ['base', 'base'], ['small', 'small'], ['medium', 'medium'], ['large-v3-turbo', 'large-v3-turbo（建議）'], ['large-v3', 'large-v3（最準）']],
+};
+const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+const OPENCC_URL = 'https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/esm/full.js';
+const STT_SR = 16000;
+// 背景執行緒：載入模型、辨識一段（最長 30 秒）聲音，回傳每句的起訖秒數與文字
+const STT_WORKER = `import('${TF_URL}').then(({ pipeline, env }) => {
+  env.allowLocalModels = false;
+  let asr = null, key = '';
+  self.onmessage = async e => {
+    const m = e.data;
+    try {
+      if (m.type === 'load') {
+        if (asr && key === m.model) { postMessage({ type: 'ready' }); return; }
+        asr = null; const files = {};
+        asr = await pipeline('automatic-speech-recognition', 'onnx-community/whisper-' + m.model, { device: 'wasm', dtype: 'q8',
+          progress_callback: p => { if (p.status === 'progress' && p.total) { files[p.file] = [p.loaded, p.total]; let a = 0, b = 0; for (const [x, y] of Object.values(files)) { a += x; b += y; } postMessage({ type: 'dl', loaded: a, total: b }); } } });
+        key = m.model; postMessage({ type: 'ready' });
+      } else if (m.type === 'run') {
+        const opt = { language: m.language, task: 'transcribe', return_timestamps: true };
+        let out;
+        try { out = await asr(m.audio, opt); }
+        catch (err) { if (!m.fallback) throw err; out = await asr(m.audio, Object.assign(opt, { language: m.fallback })); }
+        postMessage({ type: 'result', chunks: (out.chunks || []).map(c => ({ s: c.timestamp[0], e: c.timestamp[1], text: c.text })) });
+      }
+    } catch (err) { postMessage({ type: 'error', message: String(err && err.message || err) }); }
+  };
+  postMessage({ type: 'boot' });
+}).catch(err => postMessage({ type: 'error', message: '無法載入語音辨識程式（請確認網路連線）：' + err }));`;
+const Stt = { worker: null, booted: null, sources: [], busy: false, stop: false, audio: new Map(), cc: null };
+const sttPref = (k, v) => { try { if (v === undefined) return localStorage.getItem('kk-stt-' + k); localStorage.setItem('kk-stt-' + k, v); } catch { } return null; };
+function sttWorker() {
+  if (Stt.worker) return Stt.booted;
+  Stt.worker = new Worker(URL.createObjectURL(new Blob([STT_WORKER], { type: 'text/javascript' })), { type: 'module' });
+  Stt.booted = new Promise((res, rej) => { Stt.worker.onmessage = e => e.data.type === 'boot' ? res() : rej(new Error(e.data.message)); Stt.worker.onerror = e => rej(new Error(e.message || '語音辨識程式載入失敗')); });
+  Stt.booted.catch(() => { Stt.worker = null; });
+  return Stt.booted;
+}
+// 送一個工作給背景執行緒，等它回覆（下載進度另外回報）
+function sttCall(msg, transfer, onDl) {
+  return new Promise((res, rej) => {
+    Stt.worker.onmessage = e => { const d = e.data; if (d.type === 'dl') onDl?.(d); else if (d.type === 'error') rej(new Error(d.message)); else res(d); };
+    Stt.worker.postMessage(msg, transfer || []);
+  });
+}
+// 媒體檔 → 16kHz 單聲道（解碼時順便重新取樣）
+async function sttDecode(m) {
+  if (Stt.audio.has(m.id)) return Stt.audio.get(m.id);
+  const ab = await new OfflineAudioContext(1, STT_SR, STT_SR).decodeAudioData(await (await fetch(m.url)).arrayBuffer());
+  let a = ab.getChannelData(0);
+  if (ab.numberOfChannels > 1) { a = new Float32Array(ab.length); for (let c = 0; c < ab.numberOfChannels; c++) { const d = ab.getChannelData(c); for (let i = 0; i < d.length; i++) a[i] += d[i] / ab.numberOfChannels; } }
+  Stt.audio.clear(); Stt.audio.set(m.id, a);
+  return a;
+}
+// 每 0.05 秒的音量（找安靜處切段、略過靜音、過濾模型在靜音時亂猜的字）
+function sttLevels(a) { const F = STT_SR / 20, n = Math.ceil(a.length / F), r = new Float32Array(n); for (let i = 0; i < n; i++) { let s = 0; const o = i * F, e = Math.min(a.length, o + F); for (let j = o; j < e; j++) s += a[j] * a[j]; r[i] = Math.sqrt(s / Math.max(1, e - o)); } return r; }
+// 切成最長 28 秒的段落，切點選在後 10 秒內最安靜的地方，避免把一句話切斷
+function sttWindows(lv, from, to) {
+  const out = []; let s = from;
+  while (s < to) {
+    let e = Math.min(to, s + 560);
+    if (e < to) { let best = e, bv = Infinity; for (let i = s + 360; i < e; i++) if (lv[i] < bv) { bv = lv[i]; best = i; } e = best; }
+    let mx = 0; for (let i = s; i < e; i++) mx = Math.max(mx, lv[i]);
+    if (mx > .004) out.push([s, e]);
+    s = e;
+  }
+  return out;
+}
+// 把一句的起訖貼齊實際有聲音的地方（模型常把段落開頭的靜音也算進第一句）
+function sttSnap(lv, g) {
+  const i0 = Math.max(0, Math.floor(g.s * 20)), i1 = Math.min(lv.length - 1, Math.ceil(g.e * 20));
+  let pk = 0; for (let i = i0; i <= i1; i++) pk = Math.max(pk, lv[i]);
+  const thr = Math.max(.004, pk * .12);
+  let a = i0, b = i1;
+  while (a < b && lv[a] < thr) a++;
+  while (b > a && lv[b] < thr) b--;
+  return b - a < 4 ? g : { ...g, s: Math.max(g.s, a / 20 - .1), e: Math.min(g.e, b / 20 + .25) };
+}
+// 相鄰兩句的交界改到附近（±1.5 秒）真正的停頓：前一句在停頓開始時結束、下一句在停頓結束時開始
+function sttAlign(lv, segs) {
+  const loud = [...lv].filter(v => v > .004).sort((a, b) => a - b), thr = Math.max(.004, (loud[Math.floor(loud.length * .9)] || 0) * .08);
+  const runs = []; let st = -1;
+  for (let i = 0; i <= lv.length; i++) { const q = i < lv.length && lv[i] < thr; if (q && st < 0) st = i; if (!q && st >= 0) { if (i - st >= 5) runs.push([st / 20, i / 20]); st = -1; } }   // 0.25 秒以上的停頓
+  const out = segs.slice().sort((a, b) => a.s - b.s).map(g => ({ ...g }));
+  for (let i = 0; i < out.length - 1; i++) {
+    const A = out[i], B = out[i + 1]; if (B.s - A.e > .6) continue;
+    const b = (A.e + B.s) / 2;
+    const cand = runs.filter(([qs, qe]) => qe > b - 1.5 && qs < b + 1.5 && qs > A.s + .3 && qe < B.e - .3);
+    if (!cand.length) continue;
+    const [qs, qe] = cand.reduce((x, y) => (y[1] - y[0]) - Math.abs((y[0] + y[1]) / 2 - b) * .3 > (x[1] - x[0]) - Math.abs((x[0] + x[1]) / 2 - b) * .3 ? y : x);
+    A.e = qs + .1; B.s = Math.max(A.e, qe - .1);
+  }
+  // 後面隔一段才有下一句時：如果聲音其實還沒停，就把結尾延到真正停下來的地方（最多 3 秒）
+  for (let i = 0; i < out.length; i++) {
+    const A = out[i], lim = Math.min(out[i + 1]?.s ?? Infinity, A.e + 3);
+    const r = runs.find(([qs]) => qs >= A.e - .2);
+    if (r && r[0] > A.e && r[0] < lim) A.e = r[0] + .1;
+  }
+  return out;
+}
+const sttLoud = (lv, s, e) => { let sum = 0, n = 0; for (let i = Math.max(0, Math.floor(s * 20)); i < Math.min(lv.length, Math.ceil(e * 20)); i++) { sum += lv[i]; n++; } return n ? sum / n : 0; };
+// 內建引擎：回傳 [{s, e, text}]（媒體檔內的秒數）
+async function sttBrowser(a, lv, ranges, L, model, onProgress) {
+  await sttWorker();
+  await sttCall({ type: 'load', model }, null, d => onProgress({ phase: 'dl', pct: d.total ? d.loaded / d.total : 0 }));
+  const segs = [];
+  const wins = ranges.flatMap(([s, e]) => sttWindows(lv, Math.floor(s * 20), Math.ceil(e * 20)));
+  const total = wins.reduce((t, [s, e]) => t + (e - s), 0) || 1; let done = 0;
+  for (const [ws, we] of wins) {
+    if (Stt.stop) break;
+    onProgress({ phase: 'run', pct: done / total });
+    const audio = a.slice(ws * STT_SR / 20, we * STT_SR / 20);
+    const r = await sttCall({ type: 'run', audio, language: L.whisper, fallback: L.fallback }, [audio.buffer]);
+    for (const c of r.chunks) { const s = ws / 20 + (c.s ?? 0), e = ws / 20 + (c.e ?? (we - ws) / 20); segs.push({ s, e: Math.max(e, s + .3), text: c.text }); }
+    done += we - ws;
+  }
+  onProgress({ phase: 'run', pct: 1 });
+  return segs;
+}
+// 片段如果從一句話中間開始，辨識模型會把時間抓錯：起點往前、終點往後延到最近的安靜處（最多 8 秒），多出來的部分之後對位時會被裁掉
+function sttExpand(lv, [s, e]) {
+  const quiet = (from, to) => { let best = from, bv = Infinity; for (let i = from; i <= to; i++) { const v = lv[i] ?? 0; if (v < bv - 1e-4) { bv = v; best = i; } if (v < .004) return i; } return best; };
+  const i0 = Math.floor(s * 20), i1 = Math.ceil(e * 20), n = lv.length - 1;
+  let qs = i0; for (let i = i0; i >= Math.max(0, i0 - 160); i--) { if ((lv[i] ?? 0) < .004) { qs = i; break; } if (i === Math.max(0, i0 - 160)) qs = i; }
+  const qe = i1 >= n ? n : quiet(i1, Math.min(n, i1 + 160));
+  return [qs / 20, Math.max(qe, i1) / 20];
+}
+// 本機 stt 服務（桌面版透過 Python 轉送，避開瀏覽器跨網域限制）
+function wav16(a) {
+  const n = a.length, buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf), w = (o, s) => [...s].forEach((c, i) => v.setUint8(o + i, c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, STT_SR, true); v.setUint32(28, STT_SR * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true); w(36, 'data'); v.setUint32(40, n * 2, true);
+  for (let i = 0; i < n; i++) { const s = clamp(a[i], -1, 1); v.setInt16(44 + i * 2, s < 0 ? s * 32768 : s * 32767, true); }
+  return new Blob([buf], { type: 'audio/wav' });
+}
+async function sttLocal(a, lv, ranges, L, model, onProgress) {
+  const api = window.pywebview.api, segs = [];
+  let i = 0;
+  for (const [s, e] of ranges) {
+    if (Stt.stop) break;
+    const blob = wav16(a.subarray(Math.floor(s * STT_SR), Math.ceil(e * STT_SR)));
+    const tok = await api.stt_begin(); const CH = 4 * 1024 * 1024;
+    for (let o = 0; o < blob.size; o += CH) await api.stt_chunk(tok, await blobToB64(blob.slice(o, o + CH)));
+    onProgress({ phase: 'run', pct: i / ranges.length, msg: '本機 stt 辨識中（大模型可能要幾分鐘）…' });
+    const r = await api.stt_run(tok, model, L.stt);
+    if (!r || r.status !== 'ok') throw new Error(r?.message || '本機 stt 沒有回應');
+    for (const it of r.items) segs.push({ s: s + it.start, e: s + it.end, text: it.text });
+    i++;
+  }
+  return segs;
+}
+// 繁簡轉換（台灣用語／香港用語／簡體）
+async function sttConvert(texts, conv) {
+  if (!conv) return texts;
+  try {
+    Stt.cc = Stt.cc || await import(OPENCC_URL);
+    const f = conv === 'cn' ? Stt.cc.Converter({ from: 'twp', to: 'cn' }) : Stt.cc.Converter({ from: 'cn', to: conv === 'hk' ? 'hk' : 'twp' });
+    return texts.map(t => f(t));
+  } catch { toast('繁簡轉換工具載入失敗，先保留原本的文字'); return texts; }
+}
+// 一句太長就依標點、字數切成幾段，時間依字數比例分配
+function sttSplit(seg, max, cjk, lv) {
+  const len = s => Array.from(s).length;
+  const tidy = s => s.trim().replace(cjk ? /[，。、；：,.;:]+$/ : /[,;:]+$/, '');
+  let t = seg.text.trim();
+  if (cjk) t = t.replace(/\s+/g, '').replace(/,/g, '，').replace(/\?/g, '？').replace(/!/g, '！').replace(/;/g, '；').replace(/:/g, '：');
+  else t = t.replace(/\s+/g, ' ');
+  if (len(t) <= max) return [{ s: seg.s, e: seg.e, text: tidy(t) }];
+  const parts = t.match(cjk ? /[^，。！？、；：]+[，。！？、；：]*/g : /[^,.!?;:]+[,.!?;:]*\s*/g) || [t], out = [];
+  let cur = '';
+  for (let p of parts) {
+    while (len(p) > max) {
+      if (cur) { out.push(cur); cur = ''; }
+      if (cjk) { const ch = Array.from(p); out.push(ch.slice(0, max).join('')); p = ch.slice(max).join(''); }
+      else { const ws = p.split(' '); let line = ''; while (ws.length && len(line + ' ' + ws[0]) <= max) line = (line ? line + ' ' : '') + ws.shift(); if (!line) line = ws.shift(); out.push(line); p = ws.join(' '); }
+    }
+    if (cur && len(cur + p) > max) { out.push(cur); cur = ''; }
+    cur += p;
+  }
+  if (cur) out.push(cur);
+  const total = out.reduce((a, x) => a + len(x), 0) || 1;
+  // 先依字數比例估切點，再貼到前後 0.8 秒內最安靜的地方（說話換氣的停頓）
+  const cuts = [seg.s]; let acc = 0;
+  for (let i = 0; i < out.length - 1; i++) {
+    acc += len(out[i]); let t = seg.s + (seg.e - seg.s) * acc / total;
+    if (lv) { let best = t, bv = Infinity; for (let f = Math.floor((t - .8) * 20); f <= Math.ceil((t + .8) * 20); f++) { const v = lv[f]; if (v != null && f / 20 > cuts[cuts.length - 1] + .3 && f / 20 < seg.e - .3 && v < bv) { bv = v; best = f / 20; } } t = best; }
+    cuts.push(t);
+  }
+  cuts.push(seg.e);
+  return out.map((x, i) => ({ s: cuts[i], e: cuts[i + 1], text: tidy(x) })).filter(r => r.text);
+}
+// 可以選的聲音來源：選取的片段、各條有聲音片段的軌道
+function sttSources(selId) {
+  const audible = c => { const m = Media.get(c.mediaId); return m && !m.music && m.url && (m.kind === 'video' || m.kind === 'audio'); };
+  const out = [], c = getClip(selId);
+  if (c && audible(c)) out.push({ id: 'clip:' + c.id, label: `選取的片段 #${c.id}（${c.track}・${clipName(c)}）`, clips: [c.id] });
+  for (const tr of ['V1', 'V2', 'V3', 'V4', 'A1', 'A2']) { const cl = clipsOn(tr).filter(audible); if (cl.length) out.push({ id: 'track:' + tr, label: `整條 ${tr} 軌（${cl.length} 段）`, clips: cl.map(x => x.id) }); }
+  return out;
+}
+function openStt(selId) {
+  if (Stt.busy) { $('sttOv').hidden = false; return; }
+  Stt.sources = sttSources(selId ?? UI.sel);
+  if (!Stt.sources.length) { toast('先把有聲音的影片或音訊放上時間軸，再點選那個片段'); return; }
+  $('sttSrc').innerHTML = Stt.sources.map(s => `<option value="${s.id}">${esc(s.label)}</option>`).join('');
+  $('sttLang').innerHTML = STT_LANGS.map(l => `<option value="${l.id}">${l.name}</option>`).join('');
+  $('sttLang').value = sttPref('lang') || 'zh-TW';
+  const local = !!(desktopApi() && window.pywebview.api.stt_run);
+  $('sttEngine').innerHTML = `<option value="browser">內建 Whisper（離線可用，所有版本）</option>${local ? '<option value="stt">本機 stt 服務（faster-whisper，需先開 start.exe）</option>' : ''}`;
+  $('sttEngine').value = local && sttPref('engine') === 'stt' ? 'stt' : 'browser';
+  sttModels();
+  $('sttTrack').value = sttPref('track') || 'T1';
+  $('sttMax').value = sttPref('max') || 16;
+  $('sttStat').textContent = ''; $('sttBar').style.width = '0%'; $('sttOut').hidden = true;
+  sttNote(); $('sttOv').hidden = false;
+}
+function sttModels() {
+  const eng = $('sttEngine').value, list = STT_MODELS[eng];
+  $('sttModel').innerHTML = list.map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+  const def = eng === 'stt' ? 'large-v3-turbo' : (matchMedia('(pointer:coarse)').matches ? 'base' : 'small');   // iPad 預設中模型（省記憶體），電腦預設大模型（較準）
+  const saved = sttPref('model-' + eng);
+  $('sttModel').value = list.some(([k]) => k === saved) ? saved : def;
+}
+function sttNote() {
+  const L = STT_LANGS.find(l => l.id === $('sttLang').value), eng = $('sttEngine').value;
+  $('sttNote').textContent = (L?.note ? '注意：' + L.note + ' ' : '') + (eng === 'stt'
+    ? '請先執行 jianchang512/stt 的 start.exe（網址 http://127.0.0.1:9977），模型由 stt 自己下載與管理。'
+    : '第一次使用會下載語音模型，之後不用網路也能辨識。說話內容只在你的電腦裡處理，不會上傳。');
+}
+async function runStt() {
+  const src = Stt.sources.find(s => s.id === $('sttSrc').value), L = STT_LANGS.find(l => l.id === $('sttLang').value);
+  const eng = $('sttEngine').value, model = $('sttModel').value, track = $('sttTrack').value, max = clamp(Number($('sttMax').value) || 16, 6, 60);
+  if (!src || !L) return;
+  sttPref('lang', L.id); sttPref('engine', eng); sttPref('model-' + eng, model); sttPref('track', track); sttPref('max', String(max));
+  Stt.busy = true; Stt.stop = false;
+  $('sttGo').hidden = true; $('sttStop').hidden = false; $('sttClose').disabled = true; $('sttOut').hidden = true;
+  const stat = (msg, pct) => { $('sttStat').textContent = msg; if (pct != null) $('sttBar').style.width = (pct * 100).toFixed(1) + '%'; };
+  try {
+    const clips = src.clips.map(getClip).filter(Boolean), items = [];
+    const byMedia = new Map(); for (const c of clips) { if (!byMedia.has(c.mediaId)) byMedia.set(c.mediaId, []); byMedia.get(c.mediaId).push(c); }
+    let k = 0;
+    for (const [mid, cs] of byMedia) {
+      if (Stt.stop) break;
+      const m = Media.get(mid), tag = byMedia.size > 1 ? `（${++k}/${byMedia.size}）` : '';
+      stat(`讀取「${m.name}」的聲音${tag}…`, 0);
+      const a = await sttDecode(m), lv = sttLevels(a);
+      // 只辨識時間軸上有用到的那幾段（前後延到安靜處，重疊的範圍合併）
+      const ranges = cs.map(c => sttExpand(lv, [toSec(c.inPt), Math.min(a.length / STT_SR, toSec(c.inPt) + toSec(c.dur) * c.speed)])).sort((x, y) => x[0] - y[0])
+        .reduce((acc, r) => { const l = acc[acc.length - 1]; if (l && r[0] <= l[1] + .5) l[1] = Math.max(l[1], r[1]); else acc.push([...r]); return acc; }, []);
+      const prog = p => stat(p.msg || (p.phase === 'dl' ? `下載語音模型 ${Math.round(p.pct * 100)}%（只有第一次需要）` : `辨識中${tag} ${Math.round(p.pct * 100)}%`), p.pct);
+      const segs = await (eng === 'stt' ? sttLocal : sttBrowser)(a, lv, ranges, L, model, prog);
+      // 過濾：空白、只有標點、聲音太小（模型在靜音時常會亂猜「謝謝觀看」之類的字）
+      const good = sttAlign(lv, segs.filter(g => g.text && !/^[\s\p{P}\p{S}\d]*$/u.test(g.text) && sttLoud(lv, g.s, g.e) > .004)).map(g => sttSnap(lv, g));
+      const texts = await sttConvert(good.map(g => g.text), L.conv);
+      const pieces = good.flatMap((g, i) => sttSplit({ s: g.s, e: g.e, text: texts[i] }, max, L.cjk, lv)).map(p => sttSnap(lv, p));
+      // 對位：媒體檔內的秒數 → 每個片段在時間軸上的位置（考慮修剪起點與速度）
+      for (const c of cs) {
+        const a0 = toSec(c.inPt), a1 = a0 + toSec(c.dur) * c.speed;
+        for (const g of pieces) { const s = Math.max(g.s, a0), e = Math.min(g.e, a1); if (e - s < .15) continue; items.push({ start: toSec(c.start) + (s - a0) / c.speed, end: toSec(c.start) + (e - a0) / c.speed, text: g.text }); }
+      }
+    }
+    if (Stt.stop && !items.length) { stat('已停止。', 0); return; }
+    if (!items.length) throw new Error('沒有辨識到說話內容（可以換大一點的模型，或確認語言選對了）');
+    items.sort((x, y) => x.start - y.start);
+    for (let i = 0; i < items.length - 1; i++) items[i].end = Math.min(items[i].end, items[i + 1].start);   // 字幕不重疊
+    const r = exec('captions.addMany', { items: items.filter(it => it.end - it.start > .1), track, group: 'stt' + Date.now().toString(36), replace: $('sttReplace').checked });
+    const fmt = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).toFixed(1).padStart(4, '0')}`;
+    $('sttOut').value = items.map(it => `[${fmt(it.start)} → ${fmt(it.end)}] ${it.text}`).join('\n'); $('sttOut').hidden = false;
+    stat(`完成！${r}。${Stt.stop ? '（已停止，只放入辨識完成的部分）' : ''}點任一段字幕調好樣式後，按「套用到這份逐字稿」就能一次統一全部。`, 1);
+    switchTab('props'); seek(sec(items[0].start));
+  } catch (e) { stat('語音轉文字失敗：' + (e?.message || e)); }
+  finally { Stt.busy = false; $('sttGo').hidden = false; $('sttGo').textContent = '重新辨識'; $('sttStop').hidden = true; $('sttClose').disabled = false; }
+}
+$('tStt').onclick = () => openStt(UI.sel);
+$('sttEngine').onchange = () => { sttModels(); sttNote(); };
+$('sttLang').onchange = () => { const L = STT_LANGS.find(l => l.id === $('sttLang').value); $('sttMax').value = L?.cjk ? 16 : 42; sttNote(); };
+$('sttGo').onclick = runStt;
+$('sttStop').onclick = () => { Stt.stop = true; $('sttStat').textContent = '停止中（等目前這一段辨識完）…'; };
+$('sttClose').onclick = () => { $('sttOv').hidden = true; };
+
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
