@@ -3381,7 +3381,12 @@ $('pjRecent').addEventListener('keydown', e => { if (e.key === 'Enter') e.target
 $('drop').addEventListener('click', async e => {
   if (!(window.pywebview?.api?.media_pick)) return;
   e.preventDefault();
-  importPaths(await window.pywebview.api.media_pick());
+  let r;
+  try { r = await window.pywebview.api.media_pick(); } catch (err) { r = { error: String(err?.message || err) }; }
+  if (Array.isArray(r)) { if (r.length) importPaths(r); return; }
+  // 電腦的開啟視窗出問題：改用瀏覽器的選檔視窗（只記得檔名，下次開專案要重新匯入）
+  toast('開啟檔案視窗失敗，改用一般選檔：' + (r?.error || ''));
+  $('fileIn').click();
 });
 $('bSrtIn').onclick = () => $('srtIn').click();
 $('srtIn').onchange = async e => { const f = e.target.files[0]; e.target.value = ''; if (!f) return; const items = parseSrt(await f.text()); if (!items.length) { toast('沒有讀到字幕，請確認是 SRT 或 VTT 格式'); return; } toast(tryExec('captions.addMany', { items }) || ''); };
@@ -3815,7 +3820,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);

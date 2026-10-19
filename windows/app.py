@@ -136,7 +136,7 @@ class DesktopBridge:
 
     # ---- 專案檔（.xkp）與最近開啟 ----
     PROJECT_TYPES = ("小柯專案 (*.xkp)", "舊版專案 (*.json)", "所有檔案 (*.*)")
-    MEDIA_TYPES = ("影片、音樂與圖片 (*.mp4;*.m4v;*.mov;*.webm;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp)", "所有檔案 (*.*)")
+    MEDIA_TYPES = ("影片 音樂 圖片 (*.mp4;*.m4v;*.mov;*.webm;*.mkv;*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp)", "所有檔案 (*.*)")
 
     def _last_dir(self) -> Path:
         for it in self._projects.recent():
@@ -205,7 +205,10 @@ class DesktopBridge:
 
     # ---- 素材檔：用電腦的「開啟」視窗選檔，記住完整路徑，專案開啟時自動載回 ----
     def media_pick(self):
-        r = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=self.MEDIA_TYPES)
+        try:
+            r = self._window.create_file_dialog(webview.OPEN_DIALOG, allow_multiple=True, file_types=self.MEDIA_TYPES)
+        except Exception as e:   # 對話框開不起來時回報給網頁，網頁會改用瀏覽器的選檔視窗
+            return {"error": str(e)}
         return [self._media.register(x) for x in (r or [])]
 
     def media_register(self, path: str):
@@ -260,12 +263,13 @@ class DesktopBridge:
             if self.forced_save_dir is not None:
                 path = self.forced_save_dir / filename
             else:
-                ext = Path(filename).suffix.lstrip(".") or "*"
+                # pywebview 的檔案類型名稱只能有文字、數字和空白，副檔名只能是英數字
+                ext = "".join(ch for ch in Path(filename).suffix.lstrip(".") if ch.isalnum()) or "*"
                 result = self._window.create_file_dialog(
                     webview.SAVE_DIALOG,
                     directory=str(AppInfo.default_save_dir()),
                     save_filename=filename,
-                    file_types=(f"{ext.upper()} 檔案 (*.{ext})", "所有檔案 (*.*)"),
+                    file_types=((f"{ext.upper()} 檔案 (*.{ext})",) if ext != "*" else ()) + ("所有檔案 (*.*)",),
                 )
                 if not result:
                     return {"status": "declined"}
@@ -735,7 +739,16 @@ class SelfTest:
                 report["stt_check"] = self.window.evaluate_js("window.__stt || null")
                 if report["stt_check"]:
                     break
-            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"] and report["project"].get("ok"))
+            # 開啟／儲存視窗的檔案類型名稱要符合 pywebview 的格式，不然按「選擇檔案…」「開啟專案」會沒反應
+            from webview.util import parse_file_type
+            bad = []
+            for f in DesktopBridge.PROJECT_TYPES + DesktopBridge.MEDIA_TYPES:
+                try:
+                    parse_file_type(f)
+                except ValueError as e:
+                    bad.append(str(e))
+            report["dialog_filters"] = bad or "ok"
+            report["ok"] = bool(report["edit"] and report["edit"].get("ok") and report["export_file_ok"] and report["version_match"] and report["project"].get("ok") and not bad)
         except Exception:
             report["error"] = traceback.format_exc()
         finally:
