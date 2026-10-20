@@ -126,6 +126,12 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .slist .srow input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:4px 6px;color:var(--fg)}
 .slist .srow button{flex:none;background:transparent;border:0;color:var(--muted);padding:2px 6px;border-radius:4px}
 .slist .srow button:hover{background:#ffffff14;color:var(--danger)}
+/* 只有桌面版（有工作資料夾）才顯示的功能 */
+body:not(.desk) .desk-only{display:none!important}
+.wsdirs{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 10px;align-items:center;margin:8px 0}
+.wsdirs b{font-family:var(--f-mono);font-size:12px}
+.wsdirs span{color:var(--muted);font-size:12px}
+.wspath{font-family:var(--f-mono);font-size:12px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:6px 8px;word-break:break-all}
 /* 最近開啟的專案 */
 .recent{display:flex;flex-direction:column;gap:4px;max-height:46vh;overflow:auto}
 .recent .rc{display:flex;align-items:center;gap:8px;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:7px 9px;cursor:pointer;text-align:left;width:100%}
@@ -311,6 +317,7 @@ textarea{resize:vertical;width:100%}
     <button class="btn" id="bOpen" title="新增專案、開啟專案、最近開啟 (Ctrl+O)">📁 專案</button>
     <button class="btn" id="bSave" title="儲存專案 .xkp (Ctrl+S)">儲存專案</button>
     <button class="btn ghost" id="bVer" title="版本與更新">v</button>
+    <button class="btn" id="bSet" title="工作資料夾、影格率等設定">⚙ 設定</button>
     <button class="btn" id="bKeys">快捷鍵</button>
     <button class="btn primary" id="bExport">匯出影片</button>
   </header>
@@ -320,7 +327,7 @@ textarea{resize:vertical;width:100%}
       <div class="ph">素材箱 <span class="muted" id="binCount"></span></div>
       <div class="pb">
         <div class="bintabs" role="tablist" id="binTabs">
-          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button><button data-bt="mask" aria-selected="false">蒙版 30</button><button data-bt="green" aria-selected="false">綠幕 20</button><button data-bt="music" aria-selected="false">配樂 110</button><button data-bt="text" aria-selected="false">字幕 12</button>
+          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button><button data-bt="mask" aria-selected="false">蒙版 30</button><button data-bt="green" aria-selected="false">綠幕 20</button><button data-bt="music" aria-selected="false">配樂 110</button><button data-bt="text" aria-selected="false">字幕 12</button><button data-bt="inbox" aria-selected="false" class="desk-only">INBOX</button><button data-bt="select" aria-selected="false" class="desk-only">精華</button>
         </div>
         <div id="bt-mine">
           <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
@@ -334,6 +341,10 @@ textarea{resize:vertical;width:100%}
         <div id="bt-mask" hidden><p class="note">先在時間軸選好畫面片段，再按「＋」套用蒙版：形狀外面會變透明，露出下層軌道。柔化、反轉在右邊「片段屬性」調整。</p><div class="bin bin3" id="binMask"></div></div>
         <div id="bt-green" hidden><p class="note">按「＋」放到播放頭位置的疊加軌（V2／V3／V4），並自動開啟綠幕去背，下面的畫面會透出來。自己的綠幕影片也能在「片段屬性」開啟去背。</p><div class="bin" id="binGreen"></div></div>
         <div id="bt-music" hidden><p class="note">全部由程式即時合成，沒有版權問題，可以放心用在任何影片。按 ▶ 試聽，按「＋」放到播放頭位置的配樂軌。</p><div class="mcats" id="musicCats"></div><div class="mlist" id="binMusic"></div></div>
+        <div id="bt-inbox" hidden><p class="note">工作資料夾的 <b>INBOX</b>（暫收區）：素材可以先丟進這個資料夾，按「歸檔」就會搬到 ASSETS 並放進素材箱。</p>
+          <div class="row2" style="margin-bottom:8px"><button class="btn" id="inRefresh">重新整理</button><button class="btn" id="inOpen">打開資料夾</button></div><div class="mlist" id="binInbox"></div></div>
+        <div id="bt-select" hidden><p class="note"><b>SELECT</b>（篩選精華）：在時間軸點選影片或音訊片段，按右邊「⭐ 存到精華區」先暫存在這裡，之後按「＋」加回時間軸的播放頭位置。</p>
+          <div class="row2" style="margin-bottom:8px"><button class="btn" id="selRefresh">重新整理</button><button class="btn" id="selOpen">打開資料夾</button></div><div class="mlist" id="binSelect"></div></div>
         <div id="bt-text" hidden><p class="note">按「＋」在播放頭加一句這種樣式的字幕，再到右邊改文字。</p><div class="bin-sec" style="margin-top:0">一般文字</div><div class="bin" id="binText"></div><div class="bin-sec">3D 立體文字動畫</div><div class="bin" id="binText3d"></div></div>
         <div class="bin-sec">字幕檔</div>
         <div class="row2">
@@ -361,6 +372,10 @@ textarea{resize:vertical;width:100%}
           <option value="hd1080">橫式 16:9・1920×1080</option>
           <option value="vert">直式 9:16・1080×1920（短影音）</option>
           <option value="square">方形 1:1・1080×1080</option>
+        </select>
+        <select class="seqfmt" id="fpsSel" aria-label="影格率" title="影格率（每秒幾格）" style="flex:0 0 auto">
+          <option value="23.976">23.976 fps</option><option value="24">24 fps</option><option value="29.97">29.97 fps</option><option value="30">30 fps</option>
+          <option value="60">60 fps</option><option value="120">120 fps</option><option value="240">240 fps</option>
         </select>
       </div>
     </section>
@@ -427,6 +442,14 @@ textarea{resize:vertical;width:100%}
   </div>
 </div>
 
+<div class="ov" id="setOv" hidden>
+  <div class="dlg" role="dialog" aria-labelledby="setTitle" style="width:min(700px,94vw);max-height:92vh;overflow:auto">
+    <h3 id="setTitle">⚙ 設定</h3>
+    <div id="setBody"></div>
+    <div class="row2" style="justify-content:flex-end;margin-top:12px"><button class="btn" id="setClose">關閉</button></div>
+  </div>
+</div>
+
 <div class="ov" id="projOv" hidden>
   <div class="dlg" role="dialog" aria-labelledby="projTitle" style="width:min(640px,94vw)">
     <h3 id="projTitle">📁 專案</h3>
@@ -436,11 +459,22 @@ textarea{resize:vertical;width:100%}
       <button class="btn" id="pjSave" title="Ctrl+S">儲存</button>
       <button class="btn" id="pjSaveAs" title="Ctrl+Shift+S">另存新檔…</button>
     </div>
-    <div class="bin-sec">新增專案</div>
+    <div class="bin-sec">新增專案（命名規則：YYYYMMDD_主題_版本）</div>
     <div class="row2" style="flex-wrap:wrap;align-items:center">
-      <input type="text" id="pjNewName" placeholder="專案名稱，例如：旅行紀錄" style="flex:1;min-width:12em">
-      <select id="pjNewFmt"><option value="hd1080">橫式 16:9・1920×1080</option><option value="hd720">橫式 16:9・1280×720</option><option value="vert">直式 9:16（短影音）</option><option value="square">方形 1:1</option></select>
-      <button class="btn primary" id="pjNew">＋ 建立</button>
+      <input type="text" id="pjDate" inputmode="numeric" maxlength="8" placeholder="YYYYMMDD" style="width:7.5em" title="日期">
+      <input type="text" id="pjNewName" placeholder="主題，例如：三隻小豬" style="flex:1;min-width:9em" title="主題">
+      <input type="text" id="pjVer" value="v01" maxlength="5" style="width:4.5em" title="版本">
+    </div>
+    <div class="row2" style="flex-wrap:wrap;align-items:center;margin-top:6px">
+      <select id="pjNewFmt" title="畫面比例"><option value="hd1080">橫式 16:9・1920×1080</option><option value="hd720">橫式 16:9・1280×720</option><option value="vert">直式 9:16（短影音）</option><option value="square">方形 1:1</option></select>
+      <select id="pjNewFps" title="影格率"><option value="23.976">23.976 fps</option><option value="24">24 fps</option><option value="29.97">29.97 fps</option><option value="30">30 fps</option><option value="60">60 fps</option><option value="120">120 fps</option><option value="240">240 fps</option></select>
+      <span class="spacer"></span><button class="btn primary" id="pjNew">＋ 建立</button>
+    </div>
+    <p class="note" id="pjNameHint"></p>
+    <div class="desk-only" style="display:block">
+      <div class="row2" style="flex-wrap:wrap;margin-top:6px"><button class="btn" id="pjNewVer" title="同一個專案資料夾裡存成下一版">另存新版本</button><button class="btn" id="pjArchive" title="已完結的專案搬到 ARCHIVE">📦 封存目前專案</button></div>
+      <div class="bin-sec">封存區（ARCHIVE）</div>
+      <div class="recent" id="pjArchived"></div>
     </div>
     <div class="bin-sec">最近開啟</div>
     <div class="recent" id="pjRecent"></div>
@@ -525,14 +559,17 @@ textarea{resize:vertical;width:100%}
 
 // ---------- 時間基準 ----------
 const TPS = 254016000000;           // 每秒 tick 數（可被所有常見影格率與取樣率整除）
-const FPS = 30;                     // 序列影格率
-const TPF = TPS / FPS;              // 每格 tick 數 = 8,467,200,000（整數）
+// 序列影格率（每個專案可選）：NTSC 的 29.97、23.976 用分數表示，每格 tick 數仍是整數
+const FPS_RATES = { '23.976': [24000, 1001], '24': [24, 1], '29.97': [30000, 1001], '30': [30, 1], '60': [60, 1], '120': [120, 1], '240': [240, 1] };
+let FPS = 30;                       // 每秒格數（可能是小數）
+let TPF = TPS / 30;                 // 每格 tick 數（30 fps 時 = 8,467,200,000）
+function setFps(key) { const [n, d] = FPS_RATES[key] || FPS_RATES['30']; FPS = n / d; TPF = TPS * d / n; }
 const sec = s => Math.round(s * TPS);
 const toSec = t => t / TPS;
 const snapF = t => Math.round(t / TPF) * TPF;   // 對齊到影格邊界
 function tc(t) {                     // 時:分:秒:格
-  const f = Math.max(0, Math.round(t / TPF));
-  const p = [Math.floor(f / FPS / 3600), Math.floor(f / FPS / 60) % 60, Math.floor(f / FPS) % 60, f % FPS];
+  const f = Math.max(0, Math.round(t / TPF)), fb = Math.round(FPS);   // 29.97、23.976 用非丟格時碼（每秒 30／24 格）
+  const p = [Math.floor(f / fb / 3600), Math.floor(f / fb / 60) % 60, Math.floor(f / fb) % 60, f % fb];
   return p.map(n => String(n).padStart(2, '0')).join(':');
 }
 const fmtDur = t => { const s = toSec(t); return s >= 60 ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}` : `${s.toFixed(1)} 秒`; };
@@ -817,7 +854,9 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
   const mode = p.mode || (p.start != null ? 'overwrite' : 'append');
   let start = p.start != null ? sec(Number(p.start)) : (mode === 'append' ? clipsOn(track).reduce((a, c) => Math.max(a, clipEnd(c)), 0) : UI.playhead);
   const type = m.kind;
-  const c = makeClip(type, track, start, m.dur, { mediaId: m.id });
+  const c = makeClip(type, track, start, p.dur != null ? sec(Number(p.dur)) : m.dur, { mediaId: m.id });
+  if (p.inPt != null) c.inPt = clamp(sec(Number(p.inPt)), 0, Math.max(0, m.dur - TPF));   // 精華片段：從素材的第幾秒開始
+  if (m.kind === 'video' || m.kind === 'audio') c.dur = Math.max(TPF, Math.min(c.dur, snapF(m.dur - c.inPt)));
   if (m.kind === 'gen') c.gen = { kind: m.gen, color: m.color };
   if (m.cat === 'sticker') c.tf.scale = m.defScale || 35;
   if (m.cat === 'green') c.key = { on: true, color: 'green', amt: 50 };
@@ -962,6 +1001,13 @@ defCmd('text.applyStyle', '套用字幕樣式（文字不變）', '{clipId?(範�
   }
   return `已把樣式套用到 ${list.length} 段字幕（文字內容沒有改變）`;
 });
+defCmd('sequence.setFps', '影格率', '{fps:"23.976"|"24"|"29.97"|"30"|"60"|"120"|"240"}：改變後所有片段會對齊到新的影格', p => {
+  const k = String(p.fps);
+  if (!FPS_RATES[k]) throw new Error('不支援的影格率：' + k);
+  doc.fps = k; setFps(k);
+  for (const c of doc.clips) { c.start = snapF(c.start); c.dur = Math.max(TPF, snapF(c.dur)); }
+  return `影格率改為 ${k} fps，片段已對齊到新的影格`;
+});
 defCmd('sequence.setFormat', '畫面比例', '{format:"hd720"|"hd1080"|"vert"|"square"}', p => {
   if (!FORMATS[p.format]) throw new Error('不支援的格式');
   doc.format = p.format; return '畫面改為 ' + FORMATS[p.format].join('×');
@@ -1031,9 +1077,13 @@ async function importFiles(files) {
   renderBin(); renderTimeline();
   return out;
 }
-// 桌面版：用完整路徑匯入（items 來自 Python 的 media_pick／拖曳）
-async function importPaths(items) {
-  const out = [];
+// 桌面版：用完整路徑匯入（items 來自 Python 的 media_pick／拖曳）；設定「複製到 ASSETS」時先把原始檔複製到工作資料夾
+async function importPaths(items, opt = {}) {
+  const out = [], api = window.pywebview?.api;
+  if (api?.ws_import && Ws.info?.copy_imports && !opt.noCopy) {
+    const ok = items.filter(i => i && i.exists);
+    if (ok.length) { toast(`把 ${ok.length} 個素材複製到 ASSETS…`); items = await api.ws_import(ok.map(i => i.path), doc.name, false); }
+  }
   for (const it of items) {
     if (!it || !it.exists) continue;
     const kind = kindOfName(it.name);
@@ -2560,7 +2610,8 @@ function applyFormat() {
   const [w, h] = FORMATS[doc.format] || FORMATS.hd720;
   if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
   $('fmt').value = doc.format;
-  $('seqInfo').textContent = `${w}×${h}・${FPS} fps`;
+  setFps(doc.fps || '30'); $('fpsSel').value = doc.fps || '30';
+  $('seqInfo').textContent = `${w}×${h}・${doc.fps || '30'} fps`;
   if (matchMedia('(max-width:980px)').matches) $('screen').style.aspectRatio = `${w}/${h}`; else $('screen').style.aspectRatio = '';
   fitScreen();
 }
@@ -2708,7 +2759,7 @@ function renderInspector() {
     }
     if (c.type === 'video' || c.type === 'audio') h += `<div class="sec"><h4>速度與音量</h4>${rng('speed', '速度', c.speed, .25, 4, .25, '×')}${rng('volume', '音量', Math.round(c.volume * 100), 0, 200, 1, '%')}
       <div class="row2"><button class="btn" data-act="mute">${c.volume === 0 ? '取消靜音' : '靜音'}</button></div></div>
-      <div class="sec"><h4>語音轉文字</h4><p class="note">把這段的說話內容辨識成逐字稿，依時間軸對齊後放進字幕軌，每一句一段文字塊。</p><div class="row2"><button class="btn primary" data-act="stt">🎙 語音轉文字</button></div></div>`;
+      <div class="sec"><h4>語音轉文字</h4><p class="note">把這段的說話內容辨識成逐字稿，依時間軸對齊後放進字幕軌，每一句一段文字塊。</p><div class="row2"><button class="btn primary" data-act="stt">🎙 語音轉文字</button><button class="btn desk-only" data-act="toSelect" title="把這段（起點與長度）存到工作資料夾的 SELECT，之後可以再加回時間軸">⭐ 存到精華區</button></div></div>`;
     if (c.type !== 'text' && c.type !== 'audio') {
       const tr = c.trans || { type: 'none', dur: 1 }, A = prevAdjacent(c);
       h += `<div class="sec" id="secTrans"><h4>轉場（從前一段進到這段）<button class="btn ghost" data-act="transPreview" style="padding:2px 6px">▶ 預覽</button></h4>
@@ -2871,9 +2922,9 @@ function openExport() {
   const ok = typeof MediaRecorder !== 'undefined' ? MIMES.filter(m => MediaRecorder.isTypeSupported(m[0])) : [];
   $('exFmt').innerHTML = ok.map((m, i) => `<option value="${i}">${m[1]}</option>`).join('') || '<option>這個瀏覽器不支援錄製</option>';
   $('exFmt').dataset.list = JSON.stringify(ok);
-  $('exName').value = $('exName').value || doc.name;
+  $('exName').value = doc.name;   // 匯出檔名＝專案名稱（YYYYMMDD_主題_版本），桌面版預設存到工作資料夾 EXPORT
   $('exGo').disabled = !ok.length || !seqDur();
-  $('exNote').textContent = !seqDur() ? '時間軸是空的，先放一些素材再匯出。' : `匯出會從頭到尾即時播放一遍並錄下來，片長 ${fmtDur(seqDur())}，大約需要同樣的時間。匯出時請讓這個分頁保持在前景。`;
+  $('exNote').textContent = !seqDur() ? '時間軸是空的，先放一些素材再匯出。' : `匯出會從頭到尾即時播放一遍並錄下來，片長 ${fmtDur(seqDur())}，大約需要同樣的時間。匯出時請讓這個分頁保持在前景。${FPS > 60 ? ` 注意：專案是 ${doc.fps} fps，但即時錄製最多跟螢幕更新一樣快（通常 60 fps），影片會以 ${doc.fps} fps 標記、畫面約每秒 60 張。` : ''}`;
   $('exportOv').hidden = false;
 }
 async function startExport() {
@@ -3001,9 +3052,9 @@ function projReset(d) {    // 換成另一個專案：清掉目前的素材、�
   UI.sel = null; UI.playhead = 0;
 }
 function confirmDiscard() { return !Proj.dirty || confirm(`「${doc.name}」還沒儲存，確定要放棄這些變更嗎？`); }
-function projNew(name, format) {
+function projNew(name, format, fps) {
   if (!confirmDiscard()) return false;
-  projReset({ name: name || '未命名專案', format: FORMATS[format] ? format : 'hd1080', tracks: freshTracks(), clips: [], nextId: 1 });
+  projReset({ name: name || '未命名專案', format: FORMATS[format] ? format : 'hd1080', fps: FPS_RATES[fps] ? String(fps) : '30', tracks: freshTracks(), clips: [], nextId: 1 });
   Object.assign(Proj, { path: '', handle: null, file: '' });
   changed(); renderBin(); markDirty(false);
   toast(`已建立新專案「${doc.name}」，記得按「儲存專案」存成 ${PROJ_EXT} 檔`);
@@ -3015,7 +3066,7 @@ async function projLoad(text, src = {}) {
   if (d.format === 'xiaoke-video-project') { nd = d.doc; media = d.media || []; ui = d.ui || null; }
   else if (Array.isArray(d.clips)) nd = d;   // 舊版 .json 專案
   else throw new Error('這不是小柯的專案檔');
-  projReset({ name: nd.name || '未命名專案', format: FORMATS[nd.format] ? nd.format : 'hd720', tracks: Object.assign(freshTracks(), nd.tracks || {}), clips: nd.clips || [], nextId: nd.nextId || 1 });
+  projReset({ name: nd.name || '未命名專案', format: FORMATS[nd.format] ? nd.format : 'hd720', fps: FPS_RATES[nd.fps] ? String(nd.fps) : '30', tracks: Object.assign(freshTracks(), nd.tracks || {}), clips: nd.clips || [], nextId: nd.nextId || 1 });
   Object.assign(Proj, { path: src.path || '', handle: src.handle || null, file: src.file || (src.path || '').split(/[\\/]/).pop() });
   changed(); renderBin();
   // 載回素材：桌面版依路徑，找不到再到專案資料夾找同名檔；其餘標成「媒體離線」，匯入同名檔就會自動接回
@@ -3060,6 +3111,8 @@ async function projSave(saveAs = false) {
   const text = projSerialize();
   try {
     if (deskProj()) {
+      // 還沒存過的專案：直接存到工作資料夾 PROJECTS\YYYYMMDD_主題\專案名稱.xkp（不用每次選位置）
+      if (!Proj.path && !saveAs && window.pywebview.api.ws_project_file) Proj.path = await window.pywebview.api.ws_project_file(doc.name);
       const r = await window.pywebview.api.project_save(text, doc.name, Proj.path, saveAs);
       if (r.status === 'ok') { Proj.path = r.path; Proj.file = r.path.split(/[\\/]/).pop(); markDirty(false); toast('已儲存：' + r.path); return true; }
       if (r.status === 'error') toast('儲存失敗：' + r.message);
@@ -3113,11 +3166,148 @@ async function openRecent(key) {
 function openProjHub() {
   $('pjCur').innerHTML = `目前專案：<b>${esc(doc.name)}</b>${Proj.path || Proj.file ? `<br><small>${esc(Proj.path || Proj.file)}</small>` : '（還沒存成檔案）'}${Proj.dirty ? '　<span style="color:var(--accent)">● 尚未儲存</span>' : ''}`;
   $('pjNewName').value = ''; $('pjNewFmt').value = doc.format === 'hd720' ? 'hd1080' : doc.format;
+  const d = new Date(); $('pjDate').value = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}`;
+  $('pjVer').value = 'v01'; $('pjNewFps').value = Ws.info?.fps || wsLocalFps() || '30'; pjHint();
+  $('pjNewVer').textContent = `另存新版本（${bumpVersion(doc.name).split('_').pop()}）`; $('pjArchive').disabled = !Proj.path;
+  renderArchived();
   $('projOv').hidden = false; renderRecent();
 }
 // 桌面版拖曳檔案進視窗：Python 會補上完整路徑後呼叫這裡
 let dropFallback = null;
 window.kkDropPaths = items => { clearTimeout(dropFallback?.timer); dropFallback = null; importPaths(items); };
+
+// ---------- 工作資料夾（桌面版）：PROJECTS／ASSETS／EXPORT／SELECT／INBOX／ARCHIVE ----------
+// 命名規則：YYYYMMDD_主題_版本。專案存在 PROJECTS\YYYYMMDD_主題\，影片輸出到 EXPORT，素材與逐字稿在 ASSETS\YYYYMMDD_主題\。
+const Ws = { info: null };
+const wsApi = () => window.pywebview?.api?.ws_info ? window.pywebview.api : null;
+const wsLocalFps = () => { try { return localStorage.getItem('kk-fps'); } catch { return null; } };
+async function wsRefresh() { const api = wsApi(); if (!api) return null; Ws.info = await api.ws_info(); document.body.classList.add('desk'); return Ws.info; }
+const projName = () => `${$('pjDate').value.trim()}_${safeName($('pjNewName').value.trim() || '未命名')}_${$('pjVer').value.trim() || 'v01'}`;
+const baseOf = n => String(n).replace(/_v\d+$/i, '');
+const bumpVersion = n => /_v(\d+)$/i.test(n) ? n.replace(/_v(\d+)$/i, (_, v) => '_v' + String(+v + 1).padStart(v.length, '0')) : n + '_v02';
+function pjHint() {
+  const n = projName(), okDate = /^\d{8}$/.test($('pjDate').value.trim());
+  $('pjNameHint').innerHTML = (okDate ? '' : '<b style="color:var(--danger)">日期請填 8 碼，例如 20261020。</b>') +
+    `檔名：<b>${esc(n)}.xkp</b>${Ws.info ? `，存在 <span class="mono">${esc(Ws.info.root)}\\PROJECTS\\${esc(baseOf(n))}\\</span>；影片輸出到 EXPORT\\${esc(n)}.mp4` : ''}`;
+}
+for (const id of ['pjDate', 'pjNewName', 'pjVer']) $(id).addEventListener('input', pjHint);
+async function createProject() {
+  if (!/^\d{8}$/.test($('pjDate').value.trim())) { toast('日期請填 8 碼，例如 20261020'); $('pjDate').focus(); return; }
+  if (!$('pjNewName').value.trim()) { toast('請輸入主題'); $('pjNewName').focus(); return; }
+  try { localStorage.setItem('kk-fps', $('pjNewFps').value); } catch { }
+  if (!projNew(projName(), $('pjNewFmt').value, $('pjNewFps').value)) return;
+  $('projOv').hidden = true;
+  if (wsApi()) { Proj.path = await wsApi().ws_project_file(doc.name); await projSave(false); }   // 桌面版：馬上建立資料夾並存好
+}
+async function saveNewVersion() {
+  const n = bumpVersion(doc.name);
+  exec('project.rename', { name: n });
+  Proj.path = wsApi() ? await wsApi().ws_project_file(n) : ''; Proj.handle = null;
+  if (await projSave(false)) { toast(`已另存新版本：${n}`); openProjHub(); }
+}
+async function archiveProject() {
+  const api = wsApi(); if (!api || !Proj.path) return;
+  if (!confirm(`要把「${baseOf(doc.name)}」封存到 ARCHIVE 嗎？\n專案資料夾和 ASSETS 裡這個專案的素材會一起搬過去，之後可以在「封存區」還原。`)) return;
+  if (Proj.dirty && !(await projSave(false))) return;
+  const r = await api.ws_archive(Proj.path);
+  if (r.status !== 'ok') { toast('封存失敗：' + r.message); return; }
+  await projOpenPath(r.path);    // 素材搬家了，重新開啟讓路徑都更新
+  toast('已封存到：' + r.folder); openProjHub();
+}
+async function renderArchived() {
+  const api = wsApi(); if (!api) return;
+  const list = await api.ws_archived();
+  $('pjArchived').innerHTML = list.length ? list.map(a => `<div class="rc" data-arc="${esc(a.folder)}"><div class="t"><b>${esc(a.name)}</b><small>${esc(a.files.length + ' 個版本・' + a.folder)}</small></div><time>${esc(a.time)}</time>
+      ${a.files.length ? `<button class="btn" data-arcopen="${esc(a.files[0])}" style="padding:3px 8px">開啟</button>` : ''}<button class="btn" data-arcback="${esc(a.folder)}" style="padding:3px 8px">還原</button></div>`).join('')
+    : '<p class="note">封存區是空的。完成的專案可以按「📦 封存目前專案」搬到這裡。</p>';
+}
+$('pjArchived').addEventListener('click', async e => {
+  const o = e.target.closest('[data-arcopen]'), b = e.target.closest('[data-arcback]');
+  if (o) { if (!confirmDiscard()) return; $('projOv').hidden = true; projOpenPath(o.dataset.arcopen); }
+  if (b) { const r = await wsApi().ws_unarchive(b.dataset.arcback); if (r.status !== 'ok') { toast('還原失敗：' + r.message); return; } toast('已還原到 PROJECTS'); renderArchived(); renderRecent(); }
+});
+// INBOX（暫收區）
+async function renderInbox() {
+  const api = wsApi(); if (!api) return;
+  const list = await api.ws_inbox();
+  $('binInbox').innerHTML = list.length ? list.map(f => `<div class="mrow"><div class="mt"><b>${esc(f.name)}</b><small>${(f.size / 1048576).toFixed(1)} MB・${esc(f.time)}</small></div><button class="add2" data-inbox="${esc(f.path)}" title="搬到 ASSETS 並放進素材箱">歸檔</button></div>`).join('')
+    : `<p class="note">INBOX 是空的。可以把素材檔丟進 <span class="mono">${esc(Ws.info?.root || '')}\\INBOX</span>。</p>`;
+}
+$('binInbox').addEventListener('click', async e => {
+  const b = e.target.closest('[data-inbox]'); if (!b) return;
+  b.disabled = true; b.textContent = '歸檔中…';
+  const items = await wsApi().ws_import([b.dataset.inbox], doc.name, true);
+  await importPaths(items, { noCopy: true }); renderInbox(); switchBinTab('mine');
+  toast('已歸檔到 ASSETS 並放進素材箱');
+});
+$('inRefresh').onclick = renderInbox; $('inOpen').onclick = () => wsApi()?.ws_open('INBOX');
+// SELECT（篩選精華）：把一段片段（素材路徑＋起點＋長度）存成小檔案，之後可以再加回時間軸
+async function saveToSelect(clipId) {
+  const c = getClip(clipId), m = c && Media.get(c.mediaId), api = wsApi();
+  if (!c || !m || !api) return;
+  if (!m.path) { toast('這個素材沒有記錄檔案位置（請用「選擇檔案…」重新匯入），無法存到精華區'); return; }
+  const now = new Date(), stamp = `${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+  const label = `${baseOf(doc.name)}_精華_${stamp}`;
+  const data = { type: 'xiaoke-select', label, project: doc.name, media: m.name, kind: m.kind, path: m.path, inPt: toSec(c.inPt), dur: +(toSec(c.dur) * c.speed).toFixed(3), created: now.toISOString() };
+  const p = await api.ws_select_save(JSON.stringify(data, null, 1), label);
+  toast('已存到精華區：' + p.split(/[\\/]/).pop());
+}
+async function renderSelect() {
+  const api = wsApi(); if (!api) return;
+  const list = await api.ws_select_list();
+  $('binSelect').innerHTML = list.length ? list.map(s => `<div class="mrow"><div class="mt"><b>${esc(s.label || s.media)}</b><small>${esc(s.media)}・${fmtDur(sec(s.inPt))} 起・${fmtDur(sec(s.dur))}</small></div>
+      <button class="add2" data-selplace="${esc(s.file)}" title="加到播放頭位置">＋</button><button class="add2" data-seldel="${esc(s.file)}" title="刪除" style="background:transparent;color:var(--muted)">✕</button></div>`).join('')
+    : '<p class="note">精華區是空的。在時間軸點選影片或音訊片段，按右邊「⭐ 存到精華區」。</p>';
+  Ws.select = list;
+}
+$('binSelect').addEventListener('click', async e => {
+  const del = e.target.closest('[data-seldel]'), pl = e.target.closest('[data-selplace]');
+  if (del) { await wsApi().ws_select_delete(del.dataset.seldel); renderSelect(); return; }
+  if (!pl) return;
+  const s = (Ws.select || []).find(x => x.file === pl.dataset.selplace); if (!s) return;
+  let m = [...Media.values()].find(x => x.path === s.path);
+  if (!m) { const info = await wsApi().media_register(s.path); if (!info.exists) { toast('找不到原始素材：' + s.path); return; } [m] = await importPaths([info], { noCopy: true }); }
+  if (!m) return;
+  const r = tryExec('media.place', { mediaId: m.id, track: m.kind === 'audio' ? 'A1' : 'V1', start: toSec(UI.playhead), inPt: s.inPt, dur: s.dur, mode: 'overwrite' });
+  if (r) toast('已加入：' + (s.label || s.media));
+});
+$('selRefresh').onclick = renderSelect; $('selOpen').onclick = () => wsApi()?.ws_open('SELECT');
+// 設定
+async function openSettings() {
+  const info = await wsRefresh(), fpsOpts = Object.keys(FPS_RATES).map(k => `<option value="${k}">${k} fps</option>`).join('');
+  $('setBody').innerHTML = info ? `
+    <div class="bin-sec" style="margin-top:0">工作資料夾（專案資料夾）</div>
+    <div class="wspath">${esc(info.root)}</div>
+    <div class="row2" style="flex-wrap:wrap;margin-top:6px"><button class="btn primary" data-set="choose">選擇資料夾…</button><button class="btn" data-set="open">打開</button>${info.custom ? '<button class="btn" data-set="reset">恢復預設</button>' : ''}</div>
+    <p class="note">預設是 <span class="mono">${esc(info.default)}</span>。換成別的資料夾（例如 E:\\video）後，小柯會在裡面自動建立下面這些資料夾：</p>
+    <div class="wsdirs">${info.dirs.map(d => `<b>${d.name}\\</b><span>${esc(d.desc)}</span><button class="btn" data-setopen="${d.name}" style="padding:2px 8px">打開</button>`).join('')}</div>
+    <div class="bin-sec">命名規則</div>
+    <p class="note">YYYYMMDD_主題_版本，例如 <b>20261020_三隻小豬_v01</b>。先決定時間線（畫面比例、影格率），再統一檔名：專案檔、匯出影片、逐字稿都用同一個名稱。</p>
+    <div class="bin-sec">素材</div>
+    <label><input type="checkbox" id="setCopy" ${info.copy_imports ? 'checked' : ''}> 匯入素材時，把原始檔複製到 ASSETS\\專案名稱（專案搬家、封存都不會遺失素材）</label>
+    <div class="bin-sec">新專案預設影格率</div>
+    <select id="setFps">${fpsOpts}</select>
+    <p class="note">120／240 fps 適合慢動作素材；匯出時畫面更新最多約和螢幕一樣（通常 60 fps）。</p>`
+    : `<p class="note">線上版／iPad 沒有工作資料夾：專案檔與匯出的影片會存到瀏覽器的「下載」或你選的位置。工作資料夾（PROJECTS、ASSETS、EXPORT…）在 Windows／Mac 桌面版使用。</p>
+    <div class="bin-sec">新專案預設影格率</div><select id="setFps">${fpsOpts}</select>`;
+  $('setFps').value = info?.fps || wsLocalFps() || '30';
+  $('setOv').hidden = false;
+}
+$('setBody').addEventListener('click', async e => {
+  const api = wsApi(), b = e.target.closest('[data-set]'), o = e.target.closest('[data-setopen]');
+  if (o) api?.ws_open(o.dataset.setopen);
+  if (!b || !api) return;
+  if (b.dataset.set === 'choose') { const r = await api.ws_choose(); if (r.status === 'ok') { toast('工作資料夾改為：' + r.root); openSettings(); } else if (r.status === 'error') toast('選擇資料夾失敗：' + r.message); }
+  if (b.dataset.set === 'reset') { await api.ws_reset(); openSettings(); }
+  if (b.dataset.set === 'open') api.ws_open('');
+});
+$('setBody').addEventListener('change', async e => {
+  const api = wsApi();
+  if (e.target.id === 'setCopy' && api) Ws.info = await api.ws_option('copy_imports', e.target.checked);
+  if (e.target.id === 'setFps') { try { localStorage.setItem('kk-fps', e.target.value); } catch { } if (api) Ws.info = await api.ws_option('fps', e.target.value); }
+});
+$('bSet').onclick = openSettings; $('setClose').onclick = () => { $('setOv').hidden = true; };
+$('pjNewVer').onclick = saveNewVersion; $('pjArchive').onclick = archiveProject;
 
 /* =====================================================================
  * 事件綁定
@@ -3147,7 +3337,8 @@ document.addEventListener('drop', e => {
 // 素材箱：加到時間軸 / 拖到軌道
 function switchBinTab(k) {
   document.querySelectorAll('#binTabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.bt === k));
-  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic', 'mask', 'green', 'music', 'text']) $('bt-' + x).hidden = x !== k;
+  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic', 'mask', 'green', 'music', 'text', 'inbox', 'select']) $('bt-' + x).hidden = x !== k;
+  if (k === 'inbox') renderInbox(); if (k === 'select') renderSelect();
   try { localStorage.setItem('kk-bintab', k); } catch { }
 }
 $('binTabs').addEventListener('click', e => { const b = e.target.closest('[data-bt]'); if (b) switchBinTab(b.dataset.bt); });
@@ -3314,6 +3505,7 @@ for (const pane of ['pProps', 'pColor']) {
     if (act === 'd3Preview') previewD3(id);
     if (act === 'styleGroup' || act === 'styleTrack' || act === 'styleAll') { const r = tryExec('text.applyStyle', { clipId: id, scope: { styleGroup: 'group', styleTrack: 'track', styleAll: 'all' }[act] }); if (r) toast(r); }
     if (act === 'stt') openStt(id);
+    if (act === 'toSelect') saveToSelect(id);
     if (act === 'animAll') { const c = getClip(id); const a = c?.text?.anim; if (a) { tryExec('text.anim', { all: true, in: a.in, out: a.out, inDur: a.inDur, outDur: a.outDur }); toast('已套用到全部字幕'); } }
     if (act === 'split') tryExec('timeline.split', { clipId: id });
     if (act === 'dup') tryExec('timeline.duplicate', { clipId: id });
@@ -3366,6 +3558,7 @@ $('snap').onchange = e => { UI.snap = e.target.checked; };
 $('safe').onchange = e => { UI.safe = e.target.checked; needDraw = true; };
 $('zoom').oninput = e => { UI.pps = Number(e.target.value); renderTimeline(); };
 $('fmt').onchange = e => tryExec('sequence.setFormat', { format: e.target.value });
+$('fpsSel').onchange = e => { const r = tryExec('sequence.setFps', { fps: e.target.value }); if (r) toast(r); };
 $('projName').onchange = e => tryExec('project.rename', { name: e.target.value });
 $('bExport').onclick = openExport;
 $('exGo').onclick = startExport; $('exCancel').onclick = cancelExport;
@@ -3378,7 +3571,7 @@ $('projIn').onchange = async e => { const f = e.target.files[0]; e.target.value 
 $('pjOpen').onclick = () => { $('projOv').hidden = true; projOpen(); };
 $('pjSave').onclick = async () => { if (await projSave(false)) openProjHub(); };
 $('pjSaveAs').onclick = async () => { if (await projSave(true)) openProjHub(); };
-$('pjNew').onclick = () => { if (projNew($('pjNewName').value.trim() || '未命名專案', $('pjNewFmt').value)) $('projOv').hidden = true; };
+$('pjNew').onclick = createProject;
 $('pjNewName').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.isComposing) $('pjNew').click(); });
 $('pjClose').onclick = () => { $('projOv').hidden = true; };
 $('pjRecent').addEventListener('click', async e => {
@@ -3749,6 +3942,12 @@ function sttApply() {
     const b = $('tlBody'), x = toSec(placed[0].start) * UI.pps; if (x < b.scrollLeft || x > b.scrollLeft + b.clientWidth - 120) b.scrollLeft = Math.max(0, x - 60);
     document.querySelector(`.clip[data-cid="${placed[0].id}"]`)?.scrollIntoView({ block: 'nearest' });
     toast(`已把 ${placed.length} 句字幕放到 ${track}（${{ T1: '一般文字軌', T2: '字幕 2', T3: '字幕 3' }[track]}）。點任一段調好樣式，再按「套用到這份逐字稿」就能一次統一。`);
+    // 桌面版：逐字稿另存一份 .srt 到工作資料夾 ASSETS\專案名稱
+    if (wsApi()) {
+      const f = t => { const ms = Math.round(toSec(t) * 1000); return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
+      const srt = placed.map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
+      wsApi().ws_srt(doc.name, srt).then(p => toast(`已把 ${placed.length} 句字幕放到 ${track}，逐字稿另存在：${p}`)).catch(() => {});
+    }
     return true;
   } catch (e) { $('sttStat').textContent = '放到字幕軌失敗：' + (e?.message || e); toast('放到字幕軌失敗：' + (e?.message || e)); return false; }
 }
@@ -3830,7 +4029,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.4.3';
+const APP_VERSION = '1.5.0';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
@@ -3895,6 +4094,7 @@ window.addEventListener('pywebviewready', () => setTimeout(() => checkUpdate(fal
 window.addEventListener('pywebviewready', async () => {
   updateTitle();
   const api = window.pywebview.api; if (!api.project_startup) return;
+  try { await wsRefresh(); } catch { }   // 工作資料夾（建立 PROJECTS、ASSETS…）
   const p = await api.project_startup();
   if (p) return projOpenPath(p);
   const rec = await api.project_recent();
