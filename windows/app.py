@@ -50,6 +50,7 @@ def _bundled_version() -> str:
 
 APP_VERSION = _bundled_version()
 IS_MAC = sys.platform == "darwin"
+FORCE_CLOSE = threading.Event()   # 更新安裝、自我測試、已存檔後關閉：不再詢問「尚未儲存」
 # Mac 版有 Apple 晶片與 Intel 兩種安裝檔（檔名裡的標記）
 MAC_ARCH = "AppleSilicon" if IS_MAC and platform.machine() == "arm64" else "Intel"
 
@@ -72,7 +73,8 @@ class AppInfo:
             base = Path.home() / "Library" / "Application Support"
         else:
             base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
-        d = base / "XiaokeVideo"
+        # 自我測試用自己的資料夾，不會動到使用者的「最近開啟」與工作資料夾設定
+        d = Path(os.environ["XIAOKE_DATA_DIR"]) if os.environ.get("XIAOKE_DATA_DIR") else base / "XiaokeVideo"
         d.mkdir(parents=True, exist_ok=True)
         return d
 
@@ -130,6 +132,7 @@ class DesktopBridge:
         self._ws = Workspace()
         self.startup_path = ""   # 從檔案總管雙擊 .xkp 開啟時的專案路徑
         self.forced_save_dir: Path | None = None  # 自我測試時不跳對話框，直接存到這裡
+        self.title = ""   # 網頁送來的視窗標題；開頭是「● 」代表專案還沒儲存
 
     def attach(self, window):
         self._window = window
@@ -183,6 +186,7 @@ class DesktopBridge:
             return {"status": "error", "message": str(e)}
 
     def set_title(self, title: str):
+        self.title = str(title)
         try:
             self._window.set_title(str(title))
         except Exception:
@@ -199,6 +203,26 @@ class DesktopBridge:
     def project_recent_remove(self, path: str):
         self._projects.remove(str(path))
         return True
+
+    def app_quit(self):
+        """網頁存好檔後要求關閉視窗（關閉時按了「儲存後關閉」）。"""
+        FORCE_CLOSE.set()
+        threading.Thread(target=self._window.destroy, daemon=True).start()
+        return True
+
+    def ask_close(self) -> bool:
+        """按視窗的 ✕：專案還沒儲存就先問。回傳 False 代表先不要關。"""
+        if FORCE_CLOSE.is_set() or not self.title.startswith("● ") or IS_MAC:
+            return True
+        import ctypes
+        name = self.title[2:].rsplit(" - ", 1)[0]
+        r = ctypes.windll.user32.MessageBoxW(None, f"「{name}」還沒儲存。\n\n是：儲存後關閉\n否：不儲存，直接關閉\n取消：回到編輯",
+                                             "小柯影音剪輯助手", 0x3 | 0x30 | 0x40000)   # 是/否/取消、警告圖示、最上層
+        if r == 7:   # 否
+            return True
+        if r == 6:   # 是：網頁存檔成功後會呼叫 app_quit
+            threading.Thread(target=lambda: self._window.evaluate_js("projSave().then(ok => { if (ok) pywebview.api.app_quit(); })"), daemon=True).start()
+        return False
 
     def project_startup(self):
         p, self.startup_path = self.startup_path, ""
@@ -298,6 +322,40 @@ class DesktopBridge:
             except Exception as e:
                 out.append({"exists": False, "name": src.name, "error": str(e)})
         return out
+
+    def ws_projects(self):
+        """工作資料夾裡所有專案檔（根目錄與 PROJECTS 底下，不含封存），最新的在前面。"""
+        root, out = self._ws.ensure(), []
+        for pat in ("*" + ProjectStore.EXT, "PROJECTS/*" + ProjectStore.EXT, "PROJECTS/*/*" + ProjectStore.EXT, "PROJECTS/*/*/*" + ProjectStore.EXT):
+            for p in root.glob(pat):
+                if p.is_file():
+                    out.append((p.stat().st_mtime, p))
+        out.sort(key=lambda x: x[0], reverse=True)
+        return [{"path": str(p), "name": p.stem, "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(t))} for t, p in out[:40]]
+
+    def ws_assets(self, name: str):
+        """ASSETS\\專案資料夾裡的素材（含子資料夾），給「我的素材」依類型分組顯示；字幕檔 .srt／.vtt 也列出來。"""
+        d = self._ws.ensure() / "ASSETS" / Workspace.base_of(name)
+        ext = Workspace.MEDIA_EXT | {".srt", ".vtt"}
+        out = []
+        if d.is_dir():
+            for p in sorted(d.rglob("*"), key=lambda x: x.name.lower()):
+                if p.is_file() and p.suffix.lower() in ext and not p.name.endswith(".part"):
+                    st = p.stat()
+                    out.append({"name": p.name, "path": str(p), "size": st.st_size, "time": time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))})
+        return {"folder": str(d), "files": out}
+
+    def read_text(self, path: str):
+        p = Path(path)
+        if p.suffix.lower() not in (".srt", ".vtt") or not p.is_file():
+            return None
+        raw = p.read_bytes()
+        for enc in ("utf-8-sig", "utf-16", "cp950"):
+            try:
+                return raw.decode(enc)
+            except UnicodeDecodeError:
+                pass
+        return raw.decode("utf-8", "replace")
 
     def ws_inbox(self):
         return self._ws.media_files(self._ws.ensure() / "INBOX")
@@ -598,7 +656,7 @@ class Workspace:
 
     def settings(self) -> dict:
         try:
-            s = json.loads(self.file.read_text(encoding="utf-8"))
+            s = json.loads(self.file.read_text(encoding="utf-8-sig"))
         except Exception:
             s = {}
         s.setdefault("workspace", "")
@@ -678,10 +736,18 @@ class ProjectStore:
         self.lock = threading.Lock()   # 網頁可能同時呼叫好幾次（各在自己的執行緒），讀寫要排隊
 
     def _read(self) -> list:
-        try:
-            return json.loads(self.file.read_text(encoding="utf-8"))
-        except Exception:
+        """讀不到（另一個程式剛好在寫）就再試幾次；檔案在但一直讀不懂時丟出錯誤，避免用空清單蓋掉整份紀錄。"""
+        if not self.file.exists():
             return []
+        for i in range(10):
+            try:
+                items = json.loads(self.file.read_text(encoding="utf-8-sig"))
+                return items if isinstance(items, list) else []
+            except Exception:
+                if i == 9:
+                    raise
+                time.sleep(0.05)
+        return []
 
     def _write(self, items: list):
         tmp = self.file.with_name(self.file.name + ".part")
@@ -690,14 +756,20 @@ class ProjectStore:
 
     def recent(self) -> list:
         with self.lock:
-            items = self._read()
+            try:
+                items = self._read()
+            except Exception:
+                items = []
         for it in items:
             it["exists"] = Path(it.get("path", "")).is_file()
         return items
 
     def touch(self, path: str, name: str):
         with self.lock:
-            items = [it for it in self._read() if it.get("path") != path]
+            try:
+                items = [it for it in self._read() if it.get("path") != path]
+            except Exception:
+                return   # 清單暫時讀不到：這次不記，也不要蓋掉原本的紀錄
             items.insert(0, {"path": path, "name": name or Path(path).stem, "time": time.strftime("%Y-%m-%d %H:%M")})
             self._write(items[: self.MAX_RECENT])
 
@@ -806,6 +878,7 @@ class Updater:
                 self.status = {"state": "manual", "pct": 100}
                 return
             self.status = {"state": "launching", "pct": 100}
+            FORCE_CLOSE.set()
             # /relaunch=1：安裝程式裝完後自動重新開啟小柯（見 installer.iss）
             subprocess.Popen([str(dest), "/SILENT", "/SUPPRESSMSGBOXES", "/NORESTART", "/CURRENTUSER", "/relaunch=1"],
                              creationflags=0x00000008 | 0x00000200, close_fds=True)   # DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP
@@ -948,6 +1021,16 @@ class SelfTest:
         const inbox = await api.ws_inbox(); R.inbox = inbox.length === 1;
         const moved = await api.ws_import([inbox[0].path], doc.name, true); R.inboxFiled = moved[0].exists && (await api.ws_inbox()).length === 0;
         await saveToSelect(UI.sel); await renderSelect(); R.select = (Ws.select || []).length >= 1;
+        // 我的素材：ASSETS 依類型分組，.srt 可以直接匯入成字幕
+        await api.ws_srt(doc.name, '1\n00:00:01,000 --> 00:00:02,500\n測試字幕\n'); await refreshAssets();
+        const srt = (Ws.assets.files || []).find(f => /\.srt$/i.test(f.name));
+        R.mine = !!srt && document.querySelectorAll('#bin .bgrp').length >= 2 && !!document.querySelector('#bin [data-srt]');
+        await useSrt(srt.path); R.srtImport = doc.clips.some(c => c.text && c.text.content === '測試字幕');
+        // 存檔 → 換成別的專案 → 再打開：最後的編輯（字幕、片段）都要回來
+        window.confirm = () => true; await projSave(); const n = doc.clips.length, path = Proj.path;
+        projNew('暫時的空專案', 'hd1080', '30'); await projOpenPath(path);
+        R.reopen = doc.clips.length === n && doc.clips.some(c => c.text && c.text.content === '測試字幕') && doc.fps === '24';
+        R.wsProjects = (await api.ws_projects()).some(p => p.path === path);
         await saveNewVersion(); R.version = /_v02\.xkp$/.test(Proj.path);
         window.confirm = () => true; await archiveProject(); R.archive = /ARCHIVE[\\/]20261020_自我測試[\\/]/.test(Proj.path);
         const un = await api.ws_unarchive((await api.ws_archived())[0].folder); R.unarchive = /PROJECTS[\\/]/.test(un.path);
@@ -1047,6 +1130,7 @@ class SelfTest:
             report["error"] = traceback.format_exc()
         finally:
             self.report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+            FORCE_CLOSE.set()
             try:
                 self.window.destroy()
             except Exception:
@@ -1067,6 +1151,7 @@ def main():
         i = args.index("--selftest")
         selftest_path = Path(args[i + 1] if i + 1 < len(args) else "selftest.json").resolve()
         selftest_path.parent.mkdir(parents=True, exist_ok=True)
+        os.environ["XIAOKE_DATA_DIR"] = str(selftest_path.parent / "selftest-data")
     if "--version" in args:
         print(f"{APP_NAME} {APP_VERSION}")
         return
@@ -1107,6 +1192,8 @@ def main():
             pass   # 舊版 pywebview 沒有這個功能：拖曳的檔案就不會記住路徑
 
     window.events.loaded += on_loaded
+    # 按視窗的 ✕ 時，專案還沒儲存就先問要不要存
+    window.events.closing += bridge.ask_close
 
     def on_start():
         if not IS_MAC:

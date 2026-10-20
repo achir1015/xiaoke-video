@@ -87,6 +87,9 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .drop.over{border-color:var(--accent);color:var(--fg);background:#f0a83a14}
 .bin-sec{font-size:11px;color:var(--muted);letter-spacing:.08em;margin:12px 0 6px}
 .bin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.bgrp{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin-top:4px;padding-bottom:3px;border-bottom:1px solid var(--line)}
+.bgrp small{color:var(--muted);font-weight:400}.bgrp .r{margin-left:auto;font-weight:400}
+.mi.asset .th{font-size:26px;color:#fff}.mi.asset .du{color:var(--accent)}
 .bin3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .bin3 .mi .th{aspect-ratio:1;background-size:contain;background-color:#2a2f35;background-image:none}
 .bin3 .mi .du{display:none}
@@ -1094,7 +1097,7 @@ async function importPaths(items, opt = {}) {
     if (m) out.push(m);
   }
   if (out.length) markDirty();
-  renderBin(); renderTimeline();
+  renderBin(); renderTimeline(); if (out.length && api?.ws_assets) refreshAssets();
   return out;
 }
 function grabThumb(el, t) {
@@ -2628,13 +2631,12 @@ function updateTC() { $('tc').innerHTML = `${tc(UI.playhead)} <small>/ ${tc(seqD
 
 function renderBin() {
   const mine = [...Media.values()].filter(m => !m.builtin);
-  $('binCount').textContent = mine.length ? `${mine.length} 個` : '';
   const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
       <div class="th" style="${m.thumb ? `background-image:url(${m.thumb})` : m.kind === 'audio' ? 'background:linear-gradient(135deg,#1e3a30,#3b9372)' : 'background:linear-gradient(135deg,#3a2418,#a8613f)'}">${m.thumb ? '' : (m.icon || '♪')}</div>
       ${m.cat === 'sticker' ? '' : `<span class="kind" style="background:${m.cat === 'green' ? '#00a03a' : { video: 'var(--v)', audio: 'var(--a)', image: 'var(--v)', gen: 'var(--g)' }[m.kind]}">${m.cat === 'intro' ? '片頭' : m.cat === 'outro' ? '片尾' : m.cat === 'green' ? '綠幕' : { video: '影片', audio: '音訊', image: '圖片', gen: '內建' }[m.kind]}</span>`}
       <button class="add" data-add="${m.id}" title="${m.cat === 'intro' ? '放到影片最前面' : m.cat === 'outro' ? '接在影片最後' : m.cat === 'sticker' ? '貼到播放頭位置的疊加軌' : m.cat === 'green' ? '放到播放頭位置的疊加軌（自動去背）' : '接在時間軸最後'}">＋</button>
       <div class="nm">${esc(m.name)}</div><div class="du">${m.kind === 'image' ? '靜態圖片' : fmtDur(m.dur)}</div></div>`;
-  $('bin').innerHTML = mine.length ? mine.map(card).join('') : '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>';
+  renderMine(mine, card);
   const cat = k => [...Media.values()].filter(m => m.builtin && m.cat === k);
   $('binIntro').innerHTML = cat('intro').map(card).join('');
   $('binOutro').innerHTML = cat('outro').map(card).join('');
@@ -2647,6 +2649,43 @@ function renderBin() {
   $('binText').innerHTML = TEXT_PRESETS.filter(p => !p.d3).map(tcard).join('');
   $('binText3d').innerHTML = TEXT_PRESETS.filter(p => p.d3).map(tcard).join('');
   renderMusicList();
+}
+// 我的素材：依類型分組（影片／音訊・音效／圖片／字幕 SRT）。桌面版另外列出 ASSETS\專案資料夾裡還沒載入的檔案，按「＋」或雙擊就載入使用
+const ASSET_GROUPS = [['video', '🎬', '影片', 'linear-gradient(135deg,#3a2418,#a8613f)'], ['audio', '🎵', '音訊／音效', 'linear-gradient(135deg,#1e3a30,#3b9372)'],
+  ['image', '🖼️', '圖片', 'linear-gradient(135deg,#1f2a44,#4a6fb0)'], ['srt', '📝', '字幕 SRT', 'linear-gradient(135deg,#2c2240,#8e6cc4)']];
+const assetKind = n => /\.(srt|vtt)$/i.test(n) ? 'srt' : kindOfName(n);
+function renderMine(mine, card) {
+  const files = (Ws.assets?.files || []).filter(f => !mine.some(m => m.path && m.path.toLowerCase() === f.path.toLowerCase()));
+  const html = ASSET_GROUPS.map(([k, ic, label, bg]) => {
+    const ms = mine.filter(m => m.kind === k), fs = files.filter(f => assetKind(f.name) === k);
+    if (!ms.length && !fs.length) return '';
+    return `<div class="bgrp">${ic} ${label} <small>${ms.length + fs.length} 個</small></div>` +
+      ms.map(m => card(m).replace('<div class="nm">', `<div class="nm">${ic} `)).join('') +
+      fs.map(f => `<div class="mi asset" ${k === 'srt' ? `data-srt="${esc(f.path)}"` : `data-apath="${esc(f.path)}"`} title="${esc(f.path)}（${k === 'srt' ? '雙擊匯入成字幕' : '雙擊載入並加到時間軸'}）">
+        <div class="th" style="background:${bg}">${ic}</div><span class="kind" style="background:#0009">ASSETS</span>
+        <button class="add" ${k === 'srt' ? `data-srtadd="${esc(f.path)}" title="匯入成字幕（放到字幕軌）"` : `data-assetadd="${esc(f.path)}" title="載入並接在時間軸最後"`}>＋</button>
+        <div class="nm">${ic} ${esc(f.name)}</div><div class="du">${k === 'srt' ? '字幕檔' : '未載入・' + fmtSize(f.size)}</div></div>`).join('');
+  }).join('');
+  const n = mine.length + files.length;
+  $('binCount').textContent = n ? `${n} 個` : '';
+  $('bin').innerHTML = (html || '<div class="empty" style="grid-column:1/-1">還沒有素材。檔案只在你的瀏覽器裡處理，不會上傳。</div>') +
+    (Ws.assets?.folder ? `<div class="note" style="grid-column:1/-1;margin-top:4px">素材資料夾：<span class="mono" style="word-break:break-all">${esc(Ws.assets.folder)}</span> <button class="btn" data-assetsopen="1" style="padding:1px 8px">開啟</button></div>` : '');
+}
+const fmtSize = b => b >= 1 << 30 ? (b / (1 << 30)).toFixed(1) + ' GB' : b >= 1 << 20 ? (b / (1 << 20)).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+async function refreshAssets() {     // 重新讀 ASSETS\專案資料夾（開啟專案、新增專案、匯入素材、存逐字稿後）
+  const api = wsApi(); if (!api?.ws_assets) return;
+  try { Ws.assets = await api.ws_assets(doc.name); } catch { Ws.assets = null; }
+  renderBin();
+}
+async function useAsset(path, place) {
+  const api = window.pywebview.api;
+  const [m] = await importPaths([await api.media_register(path)], { noCopy: true });
+  if (m && place) { const r = tryExec('media.place', { mediaId: m.id }); if (r) toast(r); }
+}
+async function useSrt(path) {
+  const t = await window.pywebview.api.read_text(path); const items = t ? parseSrt(t) : [];
+  if (!items.length) { toast('沒有讀到字幕，請確認是 SRT 或 VTT 格式'); return; }
+  toast(tryExec('captions.addMany', { items }) || '');
 }
 let musicCat = 'happy';
 function renderMusicList() {
@@ -3040,7 +3079,7 @@ function updateTitle() {
 function projSerialize() {
   const media = [...Media.values()].filter(m => !m.builtin).map(m => ({ id: m.id, name: m.name, kind: m.kind, path: m.path || '', size: m.size || 0, dur: m.dur, w: m.w, h: m.h }));
   return JSON.stringify({ format: 'xiaoke-video-project', app: '小柯影音剪輯助手', version: APP_VERSION, saved: new Date().toISOString(), tps: TPS, doc, media,
-    ui: { playhead: UI.playhead, pps: UI.pps, sel: UI.sel, tab: UI.tab, binTab: document.querySelector('#binTabs [aria-selected=true]')?.dataset.bt, musicCat, snap: UI.snap, safe: UI.safe } }, null, 1);
+    ui: { playhead: UI.playhead, pps: UI.pps, sel: UI.sel, tab: UI.tab, binTab: document.querySelector('#binTabs [aria-selected=true]')?.dataset.bt, musicCat, snap: UI.snap, safe: UI.safe, scrollX: $('tlBody').scrollLeft, scrollY: $('tlBody').scrollTop } }, null, 1);
 }
 const freshTracks = () => Object.fromEntries(TRACKS.map(t => [t.id, { muted: false }]));
 function projReset(d) {    // 換成另一個專案：清掉目前的素材、播放元素與復原紀錄
@@ -3056,7 +3095,7 @@ function projNew(name, format, fps) {
   if (!confirmDiscard()) return false;
   projReset({ name: name || '未命名專案', format: FORMATS[format] ? format : 'hd1080', fps: FPS_RATES[fps] ? String(fps) : '30', tracks: freshTracks(), clips: [], nextId: 1 });
   Object.assign(Proj, { path: '', handle: null, file: '' });
-  changed(); renderBin(); markDirty(false);
+  changed(); renderBin(); markDirty(false); refreshAssets();
   toast(`已建立新專案「${doc.name}」，記得按「儲存專案」存成 ${PROJ_EXT} 檔`);
   return true;
 }
@@ -3089,7 +3128,12 @@ async function projLoad(text, src = {}) {
     if (ui.tab) switchTab(ui.tab);
     UI.sel = getClip(ui.sel) ? ui.sel : null;
   }
-  changed(); renderBin(); seek(ui?.playhead || 0); markDirty(false);
+  changed(); renderBin(); seek(ui?.playhead || 0); markDirty(false); refreshAssets();
+  requestAnimationFrame(() => {   // 時間軸捲回存檔時的位置（舊檔沒有記錄：捲到播放頭）
+    const b = $('tlBody');
+    if (ui && ui.scrollX != null) { b.scrollLeft = ui.scrollX; b.scrollTop = ui.scrollY || 0; }
+    else b.scrollLeft = Math.max(0, toSec(UI.playhead) * UI.pps - b.clientWidth / 2);
+  });
   if (api && Proj.path) api.project_touch(Proj.path, doc.name);
   if (!api) webRecentAdd();
   toast(missing.length ? `已開啟「${doc.name}」。找不到 ${missing.length} 個素材：${missing.join('、')}。請重新匯入（同名檔案會自動接回）` : `已開啟「${doc.name}」${media.length ? `，${media.length} 個素材都已載回` : ''}`);
@@ -3143,11 +3187,17 @@ function webRecentAdd() {
 async function renderRecent() {
   let items = [];
   try {
-    if (deskProj()) items = (await window.pywebview.api.project_recent()).map(it => ({ key: it.path, name: it.name, sub: it.path, time: it.time, missing: !it.exists }));
+    if (deskProj()) {
+      const api = window.pywebview.api;
+      items = (await api.project_recent()).map(it => ({ key: it.path, name: it.name, sub: it.path, time: it.time, missing: !it.exists }));
+      // 工作資料夾裡的專案檔也列出來（就算不在最近開啟清單，也找得到）
+      const seen = new Set(items.map(i => i.key.toLowerCase()));
+      if (api.ws_projects) for (const it of await api.ws_projects()) if (!seen.has(it.path.toLowerCase())) items.push({ key: it.path, name: it.name, sub: '工作資料夾：' + it.path, time: it.time, ws: true });
+    }
     else items = webRecentList().map(it => ({ key: it.id, name: it.name, sub: it.file + (it.handle && FS_API ? '' : '（開啟時需要再選一次檔案）'), time: it.time }));
   } catch { }
   $('pjRecent').innerHTML = items.length ? items.map(it => `<div class="rc ${it.missing ? 'missing' : ''}" role="button" tabindex="0" data-rc="${esc(it.key)}" title="${esc(it.sub)}">
-      <div class="t"><b>${esc(it.name)}</b><small>${esc(it.missing ? '找不到檔案：' + it.sub : it.sub)}</small></div><time>${esc(it.time || '')}</time><button class="x" data-rcx="${esc(it.key)}" title="從清單移除">✕</button></div>`).join('')
+      <div class="t"><b>${esc(it.name)}</b><small>${esc(it.missing ? '找不到檔案：' + it.sub : it.sub)}</small></div><time>${esc(it.time || '')}</time>${it.ws ? '' : `<button class="x" data-rcx="${esc(it.key)}" title="從清單移除">✕</button>`}</div>`).join('')
     : '<p class="note">還沒有最近開啟的專案。存檔或開啟過的專案會記在這裡（路徑、專案名稱、時間）。</p>';
 }
 async function openRecent(key) {
@@ -3347,6 +3397,9 @@ document.querySelector('.bin-p').addEventListener('click', e => {
   const mc = e.target.closest('[data-mcat]'); if (mc) { musicCat = mc.dataset.mcat; renderMusicList(); return; }
   const am = e.target.closest('[data-addmask]'); if (am) { const r = tryExec('clip.mask', { mask: am.dataset.addmask }); if (r) { toast(r); switchTab('props'); } return; }
   const at = e.target.closest('[data-addtp]'); if (at) { const r = tryExec('text.add', { preset: at.dataset.addtp }); if (r) { toast(r); switchTab('props'); } return; }
+  const aa = e.target.closest('[data-assetadd]'); if (aa) { useAsset(aa.dataset.assetadd, true); return; }
+  const sa = e.target.closest('[data-srtadd]'); if (sa) { useSrt(sa.dataset.srtadd); return; }
+  if (e.target.closest('[data-assetsopen]')) { window.pywebview?.api?.open_folder(Ws.assets.folder); return; }
   const a = e.target.closest('[data-add]'); if (a) { const r = tryExec('media.place', { mediaId: a.dataset.add }); if (r) { toast(r); const c = getClip(UI.sel); if (c) seek(c.start); } return; }
   if (e.target.closest('[data-addtext]')) { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); }
 });
@@ -3354,6 +3407,8 @@ document.querySelector('.bin-p').addEventListener('dblclick', e => {
   if (e.target.closest('button')) return;
   const mk = e.target.closest('[data-mask]'); if (mk) { const r = tryExec('clip.mask', { mask: mk.dataset.mask }); if (r) toast(r); return; }
   const tp = e.target.closest('[data-tp]'); if (tp) { tryExec('text.add', { preset: tp.dataset.tp }); return; }
+  const ap = e.target.closest('[data-apath]'); if (ap) { useAsset(ap.dataset.apath, true); return; }
+  const sr = e.target.closest('[data-srt]'); if (sr) { useSrt(sr.dataset.srt); return; }
   const mi = e.target.closest('[data-mid]'); if (mi) tryExec('media.place', { mediaId: mi.dataset.mid });
   else if (e.target.closest('[data-text]')) tryExec('text.add', { text: '在這裡輸入字幕' });
 });
@@ -3946,7 +4001,7 @@ function sttApply() {
     if (wsApi()) {
       const f = t => { const ms = Math.round(toSec(t) * 1000); return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
       const srt = placed.map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
-      wsApi().ws_srt(doc.name, srt).then(p => toast(`已把 ${placed.length} 句字幕放到 ${track}，逐字稿另存在：${p}`)).catch(() => {});
+      wsApi().ws_srt(doc.name, srt).then(p => toast(`已把 ${placed.length} 句字幕放到 ${track}，逐字稿另存在：${p}`) || refreshAssets()).catch(() => {});
     }
     return true;
   } catch (e) { $('sttStat').textContent = '放到字幕軌失敗：' + (e?.message || e); toast('放到字幕軌失敗：' + (e?.message || e)); return false; }
@@ -4029,7 +4084,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
@@ -4097,8 +4152,9 @@ window.addEventListener('pywebviewready', async () => {
   try { await wsRefresh(); } catch { }   // 工作資料夾（建立 PROJECTS、ASSETS…）
   const p = await api.project_startup();
   if (p) return projOpenPath(p);
-  const rec = await api.project_recent();
-  if (rec.some(r => r.exists)) openProjHub();
+  refreshAssets();
+  const rec = await api.project_recent(), wsp = api.ws_projects ? await api.ws_projects() : [];
+  if (rec.some(r => r.exists) || wsp.length) openProjHub();
 });
 // 線上版（含 iPad「加入主畫面」）註冊離線快取；桌面版和本機預覽不需要
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
