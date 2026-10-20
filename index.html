@@ -229,6 +229,8 @@ textarea{resize:vertical;width:100%}
 .clip .nm{position:absolute;left:8px;right:8px;top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-shadow:0 1px 2px #000c;pointer-events:none}
 .clip .bd{position:absolute;right:8px;bottom:3px;white-space:nowrap;max-width:calc(100% - 16px);overflow:hidden;font-family:var(--f-mono);font-size:10px;background:#000a;border-radius:3px;padding:0 4px;pointer-events:none}
 .clip .fi,.clip .fo{position:absolute;top:0;bottom:0;pointer-events:none}
+.clip .fr{position:absolute;top:0;bottom:0;background-repeat:no-repeat;pointer-events:none;border-right:1px solid #0006}
+.clip .wv{position:absolute;left:0;right:0;bottom:0;height:42%;background-color:#0008;background-repeat:no-repeat;pointer-events:none}
 .clip .fi{left:0;background:linear-gradient(to top right,#000a 50%,transparent 50%)}
 .clip .fo{right:0;background:linear-gradient(to top left,#000a 50%,transparent 50%)}
 .clip .hd{position:absolute;top:0;bottom:0;width:8px;cursor:ew-resize;z-index:2}
@@ -1064,7 +1066,9 @@ async function loadMediaItem(it) {
     }
   } catch (e) { toast(`「${m.name}」讀取失敗：${e.message}`); if (it.file) URL.revokeObjectURL(m.url); return null; }
   Media.set(m.id, m);
-  if (m.kind !== 'image' && m.size < 250 * 1024 * 1024) makeWave(it.file || m.url, m).catch(() => {});
+  // 波形：桌面版（檔案在本機）可處理到 1.5GB；瀏覽器版 250MB 以內
+  if (m.kind !== 'image' && m.size < (m.path ? 1536 : 250) * 1024 * 1024) makeWave(it.file || m.url, m).catch(() => {});
+  if (m.kind === 'video') makeStrip(m).catch(() => {});
   relinkOffline(m);
   return m;
 }
@@ -1110,6 +1114,33 @@ function grabThumb(el, t) {
     };
     el.onseeked = done; el.currentTime = t || 0; setTimeout(done, 4000);
   });
+}
+// 時間軸上影片片段一格一格的畫面：沿整支影片平均取 8～120 張小圖，拼成一張橫條圖
+async function makeStrip(m) {
+  const d = toSec(m.dur), N = Math.max(8, Math.min(120, Math.ceil(d / 3))), FW = 96, FH = 54;
+  const el = document.createElement('video'); if (crossUrl(m.url)) el.crossOrigin = 'anonymous';
+  el.muted = true; el.preload = 'auto'; el.playsInline = true; el.src = m.url; await loadMeta(el);
+  const c = document.createElement('canvas'); c.width = N * FW; c.height = FH; const g = c.getContext('2d');
+  const publish = () => new Promise(r => c.toBlob(b => {
+    if (b && Media.get(m.id) === m) { if (m.strip) URL.revokeObjectURL(m.strip.url); m.strip = { url: URL.createObjectURL(b), n: N }; renderTimeline(); }
+    r();
+  }, 'image/jpeg', .7));
+  let bestI = -1, best = -1;
+  for (let i = 0; i < N; i++) {
+    if (Media.get(m.id) !== m) break;   // 專案已關閉
+    await new Promise(r => { const t = setTimeout(r, 3000); el.onseeked = () => { clearTimeout(t); r(); }; el.currentTime = Math.min(d - .05, (i + .5) * d / N); });
+    try { g.drawImage(el, i * FW, 0, FW, FH); } catch { break; }
+    if (i < N * .5) {    // 素材箱縮圖改用前半段最亮的一格（開頭常是黑畫面）
+      const px = g.getImageData(i * FW, 0, FW, FH).data; let sum = 0; for (let k = 0; k < px.length; k += 16) sum += px[k] + px[k + 1] + px[k + 2];
+      if (sum > best) { best = sum; bestI = i; }
+    }
+    if (i % 15 === 14 || i === N - 1) await publish();
+  }
+  el.removeAttribute('src'); el.load();
+  if (bestI >= 0 && Media.get(m.id) === m) {
+    const t = document.createElement('canvas'); t.width = 160; t.height = 90; t.getContext('2d').drawImage(c, bestI * FW, 0, FW, FH, 0, 0, 160, 90);
+    m.thumb = t.toDataURL('image/jpeg', .75); renderBin();
+  }
 }
 async function makeWave(src, m) {      // 解碼音訊並畫出波形圖（src 是 File 或網址）
   const buf = typeof src === 'string' ? await (await fetch(src)).arrayBuffer() : await src.arrayBuffer();
@@ -2713,7 +2744,15 @@ function renderTimeline() {
     const cl = clipsOn(t.id).map(c => {
       const m = Media.get(c.mediaId), x = toSec(c.start) * pps, w = Math.max(3, toSec(c.dur) * pps);
       let bg = '';
-      if (m && m.kind === 'video' && m.thumb) bg = `background-image:url(${m.thumb})`;
+      let frames = '';
+      if (m && m.kind === 'video' && m.strip) {     // 影格：每格約 16:9，對應片段在影片裡的時間
+        const n = Math.max(1, Math.min(400, Math.round(w / (rowH('video') * 16 / 9)))), tw = w / n, N = m.strip.n, d = toSec(m.dur);
+        for (let i = 0; i < n; i++) {
+          const tc = toSec(c.inPt) + (i + .5) * tw / pps * c.speed, k = Math.max(0, Math.min(N - 1, Math.floor(tc / d * N)));
+          frames += `<i class="fr" style="left:${(i * tw).toFixed(1)}px;width:${(tw + .5).toFixed(1)}px;background-image:url(${m.strip.url});background-size:${N * 100}% 100%;background-position:${N > 1 ? (k / (N - 1) * 100).toFixed(3) : 0}% 0"></i>`;
+        }
+      } else if (m && m.kind === 'video' && m.thumb) bg = `background-image:url(${m.thumb})`;
+      if (m && m.kind === 'video' && m.wave) frames += `<i class="wv" style="background-image:url(${m.wave});background-size:${toSec(m.dur) * pps / c.speed}px 100%;background-position:${-toSec(c.inPt) * pps / c.speed}px 0"></i>`;
       else if (m && m.kind === 'image' && m.cat === 'sticker') bg = `background-image:url(${m.thumb});background-size:auto 80%;background-position:4px center;background-repeat:repeat-x`;
       else if (m && m.kind === 'image') bg = `background-image:url(${m.thumb})`;
       else if (m && m.kind === 'gen' && m.thumb) bg = `background-image:url(${m.thumb})`;
@@ -2722,7 +2761,7 @@ function renderTimeline() {
       const an = c.type === 'text' ? c.text.anim : null;
       const badges = [an && (an.in !== 'none' || an.out !== 'none') ? '✦' + [ANIM_IN[an.in]?.name, ANIM_OUT[an.out]?.name].filter(n => n && n !== '無').join('→') : '', c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : '', c.text?.d3 ? '3D ' + D3_ANIMS[c.text.d3.anim] : '', c.mask ? '蒙版：' + MASK[c.mask.kind]?.name : '', c.key?.on ? '去背' : '', m?.music && !m.url ? '產生中…' : ''].filter(Boolean).join(' · ');
       return `<div class="clip k-${kind} ${UI.sel === c.id ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
-        ${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
+        ${frames}${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
         <div class="hd l"></div><span class="nm">${esc(clipName(c))}</span>${badges ? `<span class="bd">${esc(badges)}</span>` : ''}<div class="hd r"></div></div>`;
     }).join('');
     let trs = '';
@@ -4084,7 +4123,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.5.2';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);

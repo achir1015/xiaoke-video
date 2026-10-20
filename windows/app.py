@@ -1018,6 +1018,8 @@ class SelfTest:
         await createProject(); R.project = /PROJECTS[\\/]20261020_自我測試[\\/]20261020_自我測試_v01\.xkp$/.test(Proj.path) && doc.fps === '24';
         const [m] = await importPaths([await api.media_register(%SRC%)]); R.assets = /ASSETS[\\/]20261020_自我測試[\\/]/.test(m.path);
         exec('media.place', { mediaId: m.id, track: 'V1', start: 0 });
+        for (let i = 0; i < 60 && !m.strip; i++) await new Promise(r => setTimeout(r, 250));
+        renderTimeline(); R.strip = !!m.strip && !!document.querySelector('.clip .fr');   // 時間軸影片片段要有一格一格的畫面
         const inbox = await api.ws_inbox(); R.inbox = inbox.length === 1;
         const moved = await api.ws_import([inbox[0].path], doc.name, true); R.inboxFiled = moved[0].exists && (await api.ws_inbox()).length === 0;
         await saveToSelect(UI.sel); await renderSelect(); R.select = (Ws.select || []).length >= 1;
