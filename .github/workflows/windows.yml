@@ -78,7 +78,7 @@ jobs:
           New-Item -ItemType Directory C:\KKTest\out -Force | Out-Null
           $exe = 'C:\KKTest\小柯影音剪輯助手\XiaokeVideo.exe'
           $p = Start-Process -FilePath $exe -ArgumentList '--selftest C:\KKTest\out\report.json' -PassThru
-          if (-not $p.WaitForExit(240000)) { Stop-Process $p -Force; Note '自我測試' '逾時 240 秒' }
+          if (-not $p.WaitForExit(900000)) { Stop-Process $p -Force; Note '自我測試' '逾時 15 分鐘' }
           if (-not (Test-Path C:\KKTest\out\report.json)) { Note '自我測試' "沒有產生報告；結束代碼 $($p.ExitCode)"; throw '沒有產生測試報告' }
           $r = Get-Content C:\KKTest\out\report.json -Raw -Encoding UTF8
           Note '自我測試報告（Windows）' $r
@@ -175,7 +175,7 @@ jobs:
           mkdir -p "$RUNNER_TEMP/kk" test-output
           "dist/小柯影音剪輯助手.app/Contents/MacOS/XiaokeVideo" --selftest "$RUNNER_TEMP/kk/report.json" &
           PID=$!
-          for i in $(seq 1 180); do [ -f "$RUNNER_TEMP/kk/report.json" ] && break; sleep 2; done
+          for i in $(seq 1 450); do [ -f "$RUNNER_TEMP/kk/report.json" ] && break; sleep 2; done   # 最多 15 分鐘（含匯出、專案、工作資料夾、語音模型下載）
           sleep 3; kill $PID 2>/dev/null || true
           cp "$RUNNER_TEMP"/kk/* test-output/ 2>/dev/null || true
           [ -f test-output/report.json ] || { echo "::error::沒有產生測試報告"; exit 1; }
