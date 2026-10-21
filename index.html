@@ -332,7 +332,7 @@ textarea{resize:vertical;width:100%}
       <div class="ph">素材箱 <span class="muted" id="binCount"></span></div>
       <div class="pb">
         <div class="bintabs" role="tablist" id="binTabs">
-          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button><button data-bt="mask" aria-selected="false">蒙版 30</button><button data-bt="green" aria-selected="false">綠幕 20</button><button data-bt="music" aria-selected="false">配樂 110</button><button data-bt="text" aria-selected="false">字幕 12</button><button data-bt="inbox" aria-selected="false" class="desk-only">INBOX</button><button data-bt="select" aria-selected="false" class="desk-only">精華</button>
+          <button data-bt="mine" aria-selected="true">我的素材</button><button data-bt="intro" aria-selected="false">片頭 20</button><button data-bt="outro" aria-selected="false">片尾 20</button><button data-bt="sticker" aria-selected="false">圖檔 30</button><button data-bt="basic" aria-selected="false">基本</button><button data-bt="mask" aria-selected="false">蒙版 30</button><button data-bt="green" aria-selected="false">綠幕 20</button><button data-bt="fxanim" aria-selected="false">特效動畫</button><button data-bt="music" aria-selected="false">配樂 110</button><button data-bt="text" aria-selected="false">字幕 12</button><button data-bt="inbox" aria-selected="false" class="desk-only">INBOX</button><button data-bt="select" aria-selected="false" class="desk-only">精華</button>
         </div>
         <div id="bt-mine">
           <label class="drop" id="drop" for="fileIn">把影片、音樂、圖片拖到這裡<br><span class="btn" style="margin-top:6px">選擇檔案…</span></label>
@@ -345,6 +345,9 @@ textarea{resize:vertical;width:100%}
         <div id="bt-basic" hidden><div class="bin" id="binGen"></div></div>
         <div id="bt-mask" hidden><p class="note">先在時間軸選好畫面片段，再按「＋」套用蒙版：形狀外面會變透明，露出下層軌道。柔化、反轉在右邊「片段屬性」調整。</p><div class="bin bin3" id="binMask"></div></div>
         <div id="bt-green" hidden><p class="note">按「＋」放到播放頭位置的疊加軌（V2／V3／V4），並自動開啟綠幕去背，下面的畫面會透出來。自己的綠幕影片也能在「片段屬性」開啟去背。</p><div class="bin" id="binGreen"></div></div>
+        <div id="bt-fxanim" hidden><p class="note" id="fxAnimNote"></p>
+          <div class="row2" style="margin-bottom:8px"><button class="btn" id="fxaRefresh">重新整理</button><a class="btn" id="fxaMake" href="https://achir1015.github.io/xiaoke-effects/" target="_blank" rel="noopener">✨ 用小柯特效製作</a><button class="btn desk-only" id="fxaFolder">打開資料夾</button></div>
+          <div class="bin" id="binFxAnim"></div></div>
         <div id="bt-music" hidden><p class="note">全部由程式即時合成，沒有版權問題，可以放心用在任何影片。按 ▶ 試聽，按「＋」放到播放頭位置的配樂軌。</p><div class="mcats" id="musicCats"></div><div class="mlist" id="binMusic"></div></div>
         <div id="bt-inbox" hidden><p class="note">工作資料夾的 <b>INBOX</b>（暫收區）：素材可以先丟進這個資料夾，按「歸檔」就會搬到 ASSETS 並放進素材箱。</p>
           <div class="row2" style="margin-bottom:8px"><button class="btn" id="inRefresh">重新整理</button><button class="btn" id="inOpen">打開資料夾</button></div><div class="mlist" id="binInbox"></div></div>
@@ -848,7 +851,7 @@ defCmd('media.place', '把素材放上時間軸', '{mediaId, track?, start?秒, 
     doc.clips.push(c); UI.sel = c.id;
     return `${p.mode === 'intro' ? '片頭放在影片最前面' : '片尾接在 V1 最後'}：片段 #${c.id}，${toSec(c.start).toFixed(2)}–${toSec(clipEnd(c)).toFixed(2)} 秒`;
   }
-  if ((m.cat === 'sticker' || m.cat === 'green') && !p.track && !p.mode && p.start == null) { p.track = freeOverlayTrack(snapF(UI.playhead), snapF(UI.playhead) + m.dur); p.mode = 'overwrite'; }
+  if ((m.cat === 'sticker' || m.cat === 'green' || m.fxanim) && !p.track && !p.mode && p.start == null) { p.track = freeOverlayTrack(snapF(UI.playhead), snapF(UI.playhead) + m.dur); p.mode = 'overwrite'; }
   if (m.cat === 'music' && !p.track && !p.mode && p.start == null) {     // 配樂：放在播放頭位置，優先用空著的 A2，再來 A1
     const s0 = snapF(UI.playhead), e0 = s0 + m.dur;
     p.track = ['A2', 'A1'].find(tr => !doc.clips.some(c => c.track === tr && c.start < e0 && clipEnd(c) > s0)) || 'A2'; p.mode = 'overwrite';
@@ -2660,6 +2663,84 @@ function fitScreen() {
 if (window.ResizeObserver) new ResizeObserver(() => fitScreen()).observe($('screen'));
 function updateTC() { $('tc').innerHTML = `${tc(UI.playhead)} <small>/ ${tc(seqDur())}</small>`; }
 
+/* ---------- 特效動畫：小柯機器人動態圖形和視覺特效工具做好、送過來的動畫（共用動畫素材） ----------
+ * 網頁版：兩個網站都在 https://achir1015.github.io，共用 IndexedDB 'xiaoke-shared' 的資料表 'anims'
+ *   每筆 { id, name, mime, blob, w, h, dur(秒), fps, alpha, thumb, size, created, from:'xiaoke-effects' }，有變動時 BroadcastChannel('xiaoke-shared') 通知
+ * 桌面版：共用資料夾「影片\小柯動畫素材」（.webm＋同名 .webm.json），由 Python 的 shared_anims 列出
+ * 格式和小柯特效 js/shared.js 一致；透明背景的 WebM 放在疊加軌（V2 以上）就會透出下面的畫面 */
+const FX_APP_URL = 'https://achir1015.github.io/xiaoke-effects/';
+const SharedAnims = {
+  db: null,
+  open() {
+    return this.db ||= new Promise((res, rej) => {
+      const r = indexedDB.open('xiaoke-shared', 1);
+      r.onupgradeneeded = () => { if (!r.result.objectStoreNames.contains('anims')) r.result.createObjectStore('anims', { keyPath: 'id' }); };
+      r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+  },
+  async tx(mode, fn) { const d = await this.open(); return new Promise((res, rej) => { const t = d.transaction('anims', mode); const q = fn(t.objectStore('anims')); t.oncomplete = () => res(q?.result); t.onerror = () => rej(t.error); }); },
+  desk: () => window.pywebview?.api?.shared_anims ? window.pywebview.api : null,
+  async list() {
+    const api = this.desk();
+    if (api) { const r = await api.shared_anims(); return (r.items || []).map(x => ({ ...x, id: x.id || x.file })); }
+    const all = (await this.tx('readonly', st => st.getAll())) || [];
+    return all.map(({ blob, ...x }) => x).sort((a, b) => b.created - a.created);
+  },
+  get(id) { return this.tx('readonly', st => st.get(id)); },
+  async remove(it) {
+    const api = this.desk();
+    if (api) { await api.shared_delete(it.file); return; }
+    await this.tx('readwrite', st => st.delete(it.id));
+    try { const c = new BroadcastChannel('xiaoke-shared'); c.postMessage({ type: 'anims' }); c.close(); } catch { }
+  },
+  // 載入成素材箱裡的影片（已經載入過的就直接用）
+  async toMedia(it, id) {
+    const have = [...Media.values()].find(m => m.fxanim === it.id || (it.path && m.path === it.path));
+    if (have) return have;
+    const api = this.desk();
+    let m = null;
+    if (api) {
+      const info = await api.media_register(it.path);
+      if (info?.exists) m = await loadMediaItem({ id, name: info.name, kind: 'video', url: info.url, size: info.size, path: info.path });
+    } else {
+      const rec = await this.get(it.id);
+      if (!rec?.blob) return null;
+      const f = new File([rec.blob], fxFileName(rec), { type: rec.mime || 'video/webm' });
+      m = await loadMediaItem({ id, name: f.name, kind: 'video', url: URL.createObjectURL(f), size: f.size, file: f });
+    }
+    if (!m) return null;
+    m.fxanim = it.id; m.alpha = !!it.alpha;
+    if (it.thumb) m.thumb = it.thumb;
+    return m;
+  },
+};
+const fxFileName = r => String(r.name || '動畫').replace(/[\\/:*?"<>|]/g, '_') + '.webm';
+let fxAnimItems = [];
+async function renderFxAnims() {
+  const box = $('binFxAnim');
+  const desk = !!SharedAnims.desk();
+  $('fxAnimNote').innerHTML = desk
+    ? '用<b>小柯機器人動態圖形和視覺特效工具</b>（桌面版）按「送到剪輯」做好的動畫，會放在「影片\\小柯動畫素材」資料夾，這裡就看得到。按「＋」放到播放頭位置的疊加軌（V2／V3／V4），透明背景會透出下面的畫面。'
+    : '在<b>小柯機器人動態圖形和視覺特效工具</b>按「送到剪輯」做好的動畫會出現在這裡（同一台裝置、同一個瀏覽器）。按「＋」放到播放頭位置的疊加軌（V2／V3／V4），透明背景會透出下面的畫面。';
+  try { fxAnimItems = await SharedAnims.list(); } catch (e) { console.warn(e); fxAnimItems = []; }
+  box.innerHTML = fxAnimItems.length ? fxAnimItems.map(it => `<div class="mi" draggable="false" data-fxa="${esc(it.id)}" title="${esc(it.name)}（雙擊放到播放頭）">
+      <div class="th" style="background:#14161a url(${it.thumb || ''}) center/contain no-repeat;${it.alpha ? 'background-color:#1d2026' : ''}">${it.thumb ? '' : '✨'}</div>
+      <span class="kind" style="background:#7b4dff">${it.alpha ? '透明動畫' : '動畫'}</span>
+      <button class="add" data-fxadd="${esc(it.id)}" title="放到播放頭位置的疊加軌">＋</button>
+      <button class="add" data-fxdel="${esc(it.id)}" title="從共用素材移除" style="right:auto;left:4px;top:auto;bottom:38px;background:#0008">🗑</button>
+      <div class="nm">${esc(it.name)}</div><div class="du">${(it.dur || 0).toFixed(1)} 秒${it.w ? ` · ${it.w}×${it.h}` : ''}</div></div>`).join('')
+    : `<p class="note" style="grid-column:1/-1">還沒有動畫。打開 <a href="${FX_APP_URL}" target="_blank" rel="noopener">小柯機器人動態圖形和視覺特效工具</a>，做好動畫後按工具列的「送到剪輯」。</p>`;
+}
+async function placeFxAnim(id) {
+  const it = fxAnimItems.find(x => x.id === id) || (await SharedAnims.list()).find(x => x.id === id);
+  if (!it) { toast('找不到這個動畫，請按「重新整理」'); return; }
+  toast(`載入動畫「${it.name}」…`);
+  const m = await SharedAnims.toMedia(it);
+  if (!m) { toast('動畫讀取失敗'); return; }
+  markDirty(); renderBin();
+  const r = tryExec('media.place', { mediaId: m.id }); if (r) toast(r);
+}
+try { const ch = new BroadcastChannel('xiaoke-shared'); ch.onmessage = e => { if (e.data?.type === 'anims' && !$('bt-fxanim').hidden) renderFxAnims(); }; } catch { }
 function renderBin() {
   const mine = [...Media.values()].filter(m => !m.builtin);
   const card = m => `<div class="mi" draggable="true" data-mid="${m.id}" title="${esc(m.name)}（雙擊加到時間軸）">
@@ -3116,7 +3197,7 @@ function updateTitle() {
   $('bSave').classList.toggle('primary', Proj.dirty);
 }
 function projSerialize() {
-  const media = [...Media.values()].filter(m => !m.builtin).map(m => ({ id: m.id, name: m.name, kind: m.kind, path: m.path || '', size: m.size || 0, dur: m.dur, w: m.w, h: m.h }));
+  const media = [...Media.values()].filter(m => !m.builtin).map(m => ({ id: m.id, name: m.name, kind: m.kind, path: m.path || '', size: m.size || 0, dur: m.dur, w: m.w, h: m.h, ...(m.fxanim ? { fxanim: m.fxanim, alpha: !!m.alpha } : {}) }));
   return JSON.stringify({ format: 'xiaoke-video-project', app: '小柯影音剪輯助手', version: APP_VERSION, saved: new Date().toISOString(), tps: TPS, doc, media,
     ui: { playhead: UI.playhead, pps: UI.pps, sel: UI.sel, tab: UI.tab, binTab: document.querySelector('#binTabs [aria-selected=true]')?.dataset.bt, musicCat, snap: UI.snap, safe: UI.safe, scrollX: $('tlBody').scrollLeft, scrollY: $('tlBody').scrollTop } }, null, 1);
 }
@@ -3154,7 +3235,9 @@ async function projLoad(text, src = {}) {
     toast(`載入素材 ${i + 1}/${media.length}：${it.name}`);
     let info = null;
     if (api) { if (it.path) info = await api.media_register(it.path); if ((!info || !info.exists) && folder) info = await api.media_find(it.name, folder); }
-    const m = info && info.exists ? await loadMediaItem({ id: it.id, name: info.name, kind: it.kind, url: info.url, size: info.size, path: info.path }) : null;
+    let m = info && info.exists ? await loadMediaItem({ id: it.id, name: info.name, kind: it.kind, url: info.url, size: info.size, path: info.path }) : null;
+    if (m && it.fxanim) { m.fxanim = it.fxanim; m.alpha = !!it.alpha; }
+    if (!m && it.fxanim && !api) m = await SharedAnims.toMedia({ id: it.fxanim, alpha: it.alpha }, it.id).catch(() => null);   // 小柯特效送來的動畫
     if (!m) { missing.push(it.name); for (const c of doc.clips) if (c.mediaId === it.id) { c.offlineName = it.name; c.mediaId = null; } }
   }
   // 編輯時的畫面狀態
@@ -3426,12 +3509,21 @@ document.addEventListener('drop', e => {
 // 素材箱：加到時間軸 / 拖到軌道
 function switchBinTab(k) {
   document.querySelectorAll('#binTabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.bt === k));
-  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic', 'mask', 'green', 'music', 'text', 'inbox', 'select']) $('bt-' + x).hidden = x !== k;
-  if (k === 'inbox') renderInbox(); if (k === 'select') renderSelect();
+  for (const x of ['mine', 'intro', 'outro', 'sticker', 'basic', 'mask', 'green', 'fxanim', 'music', 'text', 'inbox', 'select']) $('bt-' + x).hidden = x !== k;
+  if (k === 'inbox') renderInbox(); if (k === 'select') renderSelect(); if (k === 'fxanim') renderFxAnims();
   try { localStorage.setItem('kk-bintab', k); } catch { }
 }
 $('binTabs').addEventListener('click', e => { const b = e.target.closest('[data-bt]'); if (b) switchBinTab(b.dataset.bt); });
-document.querySelector('.bin-p').addEventListener('click', e => {
+$('binFxAnim').addEventListener('dblclick', e => { const c = e.target.closest('[data-fxa]'); if (c && !e.target.closest('button')) placeFxAnim(c.dataset.fxa); });
+$('fxaRefresh').addEventListener('click', () => renderFxAnims());
+$('fxaFolder').addEventListener('click', () => window.pywebview?.api?.open_shared_dir?.());
+document.querySelector('.bin-p').addEventListener('click', async e => {
+  const fa = e.target.closest('[data-fxadd]'); if (fa) { placeFxAnim(fa.dataset.fxadd); return; }
+  const fd = e.target.closest('[data-fxdel]'); if (fd) {
+    const it = fxAnimItems.find(x => x.id === fd.dataset.fxdel);
+    if (it && confirm(`從共用動畫素材移除「${it.name}」？（已經放進時間軸的片段不受影響${SharedAnims.desk() ? '' : '，但之後重新開啟專案會變成媒體離線'}）`)) { await SharedAnims.remove(it); renderFxAnims(); }
+    return;
+  }
   const pv = e.target.closest('[data-preview]'); if (pv) { previewMusic(pv.dataset.preview); return; }
   const mc = e.target.closest('[data-mcat]'); if (mc) { musicCat = mc.dataset.mcat; renderMusicList(); return; }
   const am = e.target.closest('[data-addmask]'); if (am) { const r = tryExec('clip.mask', { mask: am.dataset.addmask }); if (r) { toast(r); switchTab('props'); } return; }
@@ -4123,7 +4215,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.5.2';
+const APP_VERSION = '1.6.0';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
@@ -4221,7 +4313,7 @@ demo();
 try { const tb = localStorage.getItem('kk-tab'); if (tb) switchTab(tb); } catch { }
 buildLibrary(); renderBin(); changed(); chatIntro(); updatePlayBtn(); updateTitle();
 document.fonts && document.fonts.ready.then(() => { buildLibrary(); renderBin(); renderTimeline(); needDraw = true; });
-try { const bt = localStorage.getItem('kk-bintab'); if (bt) switchBinTab(bt); } catch { }
+try { const bt = new URLSearchParams(location.search).get('bt') || localStorage.getItem('kk-bintab'); if (bt && $('bt-' + bt)) switchBinTab(bt); } catch { }
 requestAnimationFrame(loop);
 // 有 Claude 可用時，小柯就能聽懂完整的句子
 (async () => {

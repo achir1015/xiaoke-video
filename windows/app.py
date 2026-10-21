@@ -236,6 +236,47 @@ class DesktopBridge:
             return {"error": str(e)}
         return [self._media.register(x) for x in (r or [])]
 
+    # ---- 特效動畫：小柯機器人動態圖形和視覺特效工具（桌面版）送過來的動畫，放在共用資料夾「影片\小柯動畫素材」----
+    @staticmethod
+    def _shared_dir() -> Path:
+        d = Path(os.environ["XKE_SHARED_DIR"]) if os.environ.get("XKE_SHARED_DIR") else Path.home() / ("Movies" if IS_MAC else "Videos") / "小柯動畫素材"
+        d.mkdir(parents=True, exist_ok=True)
+        return d
+
+    def shared_anims(self):
+        items = []
+        try:
+            d = self._shared_dir()
+            for p in sorted(d.iterdir(), key=lambda x: x.stat().st_mtime, reverse=True):
+                if p.suffix.lower() not in (".webm", ".mp4") or not p.is_file():
+                    continue
+                meta = {}
+                side = Path(str(p) + ".json")
+                if side.is_file():
+                    try:
+                        meta = json.loads(side.read_text(encoding="utf-8"))
+                    except Exception:
+                        meta = {}
+                meta.update({"file": p.name, "path": str(p), "size": p.stat().st_size})
+                meta.setdefault("name", p.stem)
+                items.append(meta)
+            return {"status": "ok", "dir": str(d), "items": items}
+        except Exception as e:
+            return {"status": "error", "message": str(e), "items": items}
+
+    def shared_delete(self, filename: str):
+        try:
+            p = self._shared_dir() / Path(str(filename)).name
+            for f in (p, Path(str(p) + ".json")):
+                if f.is_file():
+                    f.unlink()
+            return {"status": "ok"}
+        except Exception as e:
+            return {"status": "error", "message": str(e)}
+
+    def open_shared_dir(self):
+        return self.open_folder(str(self._shared_dir()))
+
     def media_register(self, path: str):
         return self._media.register(str(path))
 
