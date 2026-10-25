@@ -398,6 +398,36 @@ class DesktopBridge:
                 pass
         return raw.decode("utf-8", "replace")
 
+    def ws_trash(self, paths: list):
+        """我的素材按右鍵「刪除檔案」：移到資源回收筒（Mac 是垃圾桶），只允許工作資料夾裡的檔案。"""
+        root, out = self._ws.root().resolve(), []
+        for raw in paths:
+            p = Path(raw)
+            try:
+                rp = p.resolve()
+                if root not in rp.parents or not rp.is_file():
+                    raise ValueError("只能刪除工作資料夾裡的素材檔")
+                self._media.forget(str(rp)) if hasattr(self._media, "forget") else None
+                if IS_MAC:
+                    trash = Path.home() / ".Trash"
+                    trash.mkdir(exist_ok=True)
+                    os.replace(rp, Workspace.unique(trash / rp.name))
+                else:
+                    import ctypes
+                    from ctypes import wintypes
+
+                    class SHFILEOPSTRUCTW(ctypes.Structure):
+                        _fields_ = [("hwnd", wintypes.HWND), ("wFunc", wintypes.UINT), ("pFrom", wintypes.LPCWSTR), ("pTo", wintypes.LPCWSTR),
+                                    ("fFlags", ctypes.c_ushort), ("fAnyOperationsAborted", wintypes.BOOL), ("hNameMappings", ctypes.c_void_p), ("lpszProgressTitle", wintypes.LPCWSTR)]
+                    op = SHFILEOPSTRUCTW(None, 3, str(rp) + "\0", None, 0x40 | 0x10 | 0x4 | 0x400, False, None, None)   # 刪除、可復原（資源回收筒）、不詢問、不顯示進度與錯誤
+                    r = ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op))
+                    if r != 0 or rp.exists():
+                        raise OSError(f"無法移到資源回收筒（代碼 {r}），檔案可能正被使用")
+                out.append({"path": str(p), "ok": True})
+            except Exception as e:
+                out.append({"path": str(p), "ok": False, "error": str(e)})
+        return out
+
     def ws_inbox(self):
         return self._ws.media_files(self._ws.ensure() / "INBOX")
 

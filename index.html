@@ -89,7 +89,12 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 .bin{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .bgrp{grid-column:1/-1;display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;margin-top:4px;padding-bottom:3px;border-bottom:1px solid var(--line)}
 .bgrp small{color:var(--muted);font-weight:400}.bgrp .r{margin-left:auto;font-weight:400}
-.mi.asset .th{font-size:26px;color:#fff}.mi.asset .du{color:var(--accent)}
+.mi.asset .th{font-size:26px;color:#fff}
+#bin .mi.bsel{outline:2px solid var(--accent);outline-offset:1px}
+.cmenu{position:fixed;z-index:200;min-width:210px;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:4px;box-shadow:0 8px 24px #000a}
+.cmenu button{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--fg);padding:7px 10px;border-radius:5px;font-size:13px}
+.cmenu button:hover{background:#ffffff14}.cmenu button.danger{color:var(--danger)}.cmenu button:disabled{opacity:.4}
+.cmenu .h{padding:4px 10px 6px;font-size:11px;color:var(--muted);border-bottom:1px solid var(--line);margin-bottom:3px}.mi.asset .du{color:var(--accent)}
 .bin3{grid-template-columns:repeat(3,minmax(0,1fr))}
 .bin3 .mi .th{aspect-ratio:1;background-size:contain;background-color:#2a2f35;background-image:none}
 .bin3 .mi .du{display:none}
@@ -239,6 +244,7 @@ textarea{resize:vertical;width:100%}
 .clip .hd.l{left:0}.clip .hd.r{right:0}
 .clip:hover .hd{background:#ffffff30}
 .clip.sel{border:2px solid var(--accent);box-shadow:0 0 0 1px #000}
+#mbox{position:absolute;z-index:6;border:1px dashed var(--accent);background:#f0a83a22;pointer-events:none}
 .playhead{position:absolute;top:0;bottom:0;width:0;border-left:2px solid var(--accent);pointer-events:none;z-index:4}
 .playhead::before{content:"";position:absolute;top:0;left:-7px;border:6px solid transparent;border-top:9px solid var(--accent)}
 .zoom{width:110px;accent-color:var(--accent)}
@@ -677,7 +683,8 @@ let doc = {
   nextId: 1,
 };
 const Media = new Map();   // id -> {id,name,kind:'video'|'audio'|'image'|'gen',url,dur,w,h,thumb,wave,img,gen,color}
-const UI = { playhead: 0, playing: false, sel: null, pps: 70, snap: true, exporting: false, safe: false, tab: 'props' };
+const UI = { playhead: 0, playing: false, sel: null, multi: new Set(), pps: 70, snap: true, exporting: false, safe: false, tab: 'props' };
+const isSel = id => UI.sel === id || UI.multi.has(id);
 
 const newId = () => doc.nextId++;
 const clipEnd = c => c.start + c.dur;
@@ -799,6 +806,7 @@ defCmd('timeline.delete', '刪除片段', '{clipId? | clipIds?[]}', p => {
   const list = targets(p);
   doc.clips = doc.clips.filter(c => !list.includes(c));
   if (list.some(c => c.id === UI.sel)) UI.sel = null;
+  for (const c of list) UI.multi.delete(c.id);
   return `刪除了 ${list.length} 個片段`;
 });
 defCmd('timeline.rippleDelete', '波紋刪除', '{clipId?}：刪掉後同一軌後面的片段往前補', p => {
@@ -825,6 +833,14 @@ defCmd('timeline.move', '移動片段', '{clipId, start秒, track?}：會覆蓋�
   c.track = tr; c.start = Math.max(0, snapF(sec(Number(p.start))));
   overwrite(c.track, c.start, clipEnd(c), c.id);
   return `片段 #${c.id} 移到 ${tr} 的 ${toSec(c.start).toFixed(2)} 秒`;
+});
+defCmd('timeline.moveMany', '一起移動多個片段', '{clipIds:[], delta秒}：保持彼此的相對位置，覆蓋目標位置的其他片段', p => {
+  const list = targets({ clipIds: p.clipIds }), ids = new Set(list.map(c => c.id));
+  let d = snapF(sec(Number(p.delta) || 0));
+  d = Math.max(d, -Math.min(...list.map(c => c.start)));   // 最前面的片段不能早於 0
+  for (const c of list) c.start += d;
+  for (const c of list) for (const o of doc.clips.filter(o => !ids.has(o.id) && o.track === c.track && o.start < clipEnd(c) && clipEnd(o) > c.start)) overwrite(c.track, c.start, clipEnd(c), c.id);
+  return `移動了 ${list.length} 個片段`;
 });
 defCmd('timeline.trim', '修剪片段', '{clipId, start?秒, end?秒}：改變片段在時間軸上的起點或終點', p => {
   const c = target(p);
@@ -2778,8 +2794,8 @@ function renderMine(mine, card) {
     const ms = mine.filter(m => m.kind === k), fs = files.filter(f => assetKind(f.name) === k);
     if (!ms.length && !fs.length) return '';
     return `<div class="bgrp">${ic} ${label} <small>${ms.length + fs.length} 個</small></div>` +
-      ms.map(m => card(m).replace('<div class="nm">', `<div class="nm">${ic} `)).join('') +
-      fs.map(f => `<div class="mi asset" ${k === 'srt' ? `data-srt="${esc(f.path)}"` : `data-apath="${esc(f.path)}"`} title="${esc(f.path)}（${k === 'srt' ? '雙擊匯入成字幕' : '雙擊載入並加到時間軸'}）">
+      ms.map(m => card(m).replace('<div class="nm">', `<div class="nm">${ic} `).replace('class="mi"', `class="mi${BinSel.has(m.id) ? ' bsel' : ''}" data-bk="${m.id}"`)).join('') +
+      fs.map(f => `<div class="mi asset${BinSel.has('a:' + f.path) ? ' bsel' : ''}" data-bk="${esc('a:' + f.path)}" ${k === 'srt' ? `data-srt="${esc(f.path)}"` : `data-apath="${esc(f.path)}"`} title="${esc(f.path)}（${k === 'srt' ? '雙擊匯入成字幕' : '雙擊載入並加到時間軸'}）">
         <div class="th" style="background:${bg}">${ic}</div><span class="kind" style="background:#0009">ASSETS</span>
         <button class="add" ${k === 'srt' ? `data-srtadd="${esc(f.path)}" title="匯入成字幕（放到字幕軌）"` : `data-assetadd="${esc(f.path)}" title="載入並接在時間軸最後"`}>＋</button>
         <div class="nm">${ic} ${esc(f.name)}</div><div class="du">${k === 'srt' ? '字幕檔' : '未載入・' + fmtSize(f.size)}</div></div>`).join('');
@@ -2790,6 +2806,63 @@ function renderMine(mine, card) {
     (Ws.assets?.folder ? `<div class="note" style="grid-column:1/-1;margin-top:4px">素材資料夾：<span class="mono" style="word-break:break-all">${esc(Ws.assets.folder)}</span> <button class="btn" data-assetsopen="1" style="padding:1px 8px">開啟</button></div>` : '');
 }
 const fmtSize = b => b >= 1 << 30 ? (b / (1 << 30)).toFixed(1) + ' GB' : b >= 1 << 20 ? (b / (1 << 20)).toFixed(1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB';
+// 我的素材的選取（key：素材 id，或 'a:' + 還沒載入的 ASSETS 檔案路徑）
+const BinSel = new Set(); let binFocus = false, binAnchor = null;
+document.addEventListener('pointerdown', e => { binFocus = !!e.target.closest('#bin'); if (!e.target.closest('.cmenu')) closeMenu(); }, true);
+function closeMenu() { document.querySelector('.cmenu')?.remove(); }
+function binKeys() { return [...document.querySelectorAll('#bin [data-bk]')].map(x => x.dataset.bk); }
+$('bin').addEventListener('click', e => {
+  const card = e.target.closest('[data-bk]'); if (!card || e.target.closest('button')) return;
+  const k = card.dataset.bk;
+  if (e.shiftKey && binAnchor) { const ks = binKeys(), a = ks.indexOf(binAnchor), b = ks.indexOf(k); if (a >= 0 && b >= 0) { if (!(e.ctrlKey || e.metaKey)) BinSel.clear(); for (const x of ks.slice(Math.min(a, b), Math.max(a, b) + 1)) BinSel.add(x); } }
+  else if (e.ctrlKey || e.metaKey) { BinSel.has(k) ? BinSel.delete(k) : BinSel.add(k); binAnchor = k; }
+  else { BinSel.clear(); BinSel.add(k); binAnchor = k; }
+  renderBin();
+});
+$('bin').addEventListener('contextmenu', e => {
+  const card = e.target.closest('[data-bk]'); if (!card) return;
+  e.preventDefault();
+  if (!BinSel.has(card.dataset.bk)) { BinSel.clear(); BinSel.add(card.dataset.bk); binAnchor = card.dataset.bk; renderBin(); }
+  const keys = [...BinSel], paths = binPaths(keys), canTrash = !!(wsApi()?.ws_trash) && paths.length > 0;
+  closeMenu();
+  const m = document.createElement('div'); m.className = 'cmenu';
+  m.innerHTML = `<div class="h">已選 ${keys.length} 個素材</div>
+    <button data-cm="remove">🗑 從我的素材移除（檔案保留）</button>
+    ${canTrash ? `<button data-cm="trash" class="danger">♻ 刪除檔案（移到資源回收筒）</button>` : ''}
+    <button data-cm="all">全選</button><button data-cm="none">取消選取</button>`;
+  document.body.appendChild(m);
+  const w = m.offsetWidth, h = m.offsetHeight;
+  m.style.left = Math.min(e.clientX, innerWidth - w - 8) + 'px'; m.style.top = Math.min(e.clientY, innerHeight - h - 8) + 'px';
+  m.addEventListener('click', ev => {
+    const b = ev.target.closest('[data-cm]'); if (!b) return; closeMenu();
+    if (b.dataset.cm === 'remove') binRemove(keys, false);
+    if (b.dataset.cm === 'trash') binRemove(keys, true);
+    if (b.dataset.cm === 'all') { for (const k of binKeys()) BinSel.add(k); renderBin(); }
+    if (b.dataset.cm === 'none') { BinSel.clear(); renderBin(); }
+  });
+});
+// 選取項目的檔案路徑（只有工作資料夾 ASSETS／INBOX 裡的檔案可以從這裡刪掉檔案）
+function binPaths(keys) {
+  const root = (Ws.info?.root || '').toLowerCase();
+  return keys.map(k => k.startsWith('a:') ? k.slice(2) : Media.get(k)?.path).filter(p => p && root && p.toLowerCase().startsWith(root));
+}
+async function binRemove(keys, trash) {
+  const mids = keys.filter(k => !k.startsWith('a:') && Media.get(k)), used = doc.clips.filter(c => mids.includes(c.mediaId));
+  const paths = trash ? binPaths(keys) : [];
+  const files = keys.filter(k => k.startsWith('a:')).length;
+  let msg = trash ? `要把 ${paths.length} 個檔案移到資源回收筒嗎？（可以從資源回收筒還原）` : `要從「我的素材」移除 ${mids.length + files} 個素材嗎？（電腦裡的檔案不會刪除）`;
+  if (used.length) msg += `\n\n其中有素材正在時間軸上使用（${used.length} 個片段），這些片段會一起刪除。`;
+  if (!mids.length && !paths.length && !trash && files) msg = `ASSETS 資料夾裡的檔案不會從清單消失，除非刪除檔案。\n要改成把這 ${files} 個檔案移到資源回收筒嗎？`;
+  if (!confirm(msg)) return;
+  if (!mids.length && !paths.length && !trash && files) return binRemove(keys, true);
+  if (used.length) exec('timeline.delete', { clipIds: used.map(c => c.id) });
+  for (const id of mids) { const m = Media.get(id); if (m.url && m.url.startsWith('blob:')) URL.revokeObjectURL(m.url); if (m.strip) URL.revokeObjectURL(m.strip.url); dropEl?.(id); Media.delete(id); }
+  let gone = 0;
+  if (paths.length) { const r = await wsApi().ws_trash(paths); gone = r.filter(x => x.ok).length; const fail = r.filter(x => !x.ok); if (fail.length) toast(`有 ${fail.length} 個檔案刪不掉：${fail[0].error}`); }
+  BinSel.clear(); markDirty(); renderTimeline(); renderBin(); renderInspector();
+  if (wsApi()) await refreshAssets();
+  toast(trash ? `已把 ${gone} 個檔案移到資源回收筒` : `已從我的素材移除 ${mids.length} 個素材`);
+}
 async function refreshAssets() {     // 重新讀 ASSETS\專案資料夾（開啟專案、新增專案、匯入素材、存逐字稿後）
   const api = wsApi(); if (!api?.ws_assets) return;
   try { Ws.assets = await api.ws_assets(doc.name); } catch { Ws.assets = null; }
@@ -2814,6 +2887,8 @@ function renderMusicList() {
 
 function rowH(kind) { return kind === 'text' ? 46 : kind === 'video' ? 58 : 48; }
 function renderTimeline() {
+  // 多選：主要選取（UI.sel）一定在多選裡；已不存在的片段移除
+  if (UI.multi.size) { for (const id of UI.multi) if (!getClip(id)) UI.multi.delete(id); if (!UI.multi.has(UI.sel)) UI.multi.clear(); }
   const pps = UI.pps, total = Math.max(seqDur() + sec(20), sec(60));
   const width = Math.ceil(toSec(total) * pps);
   $('inner').style.width = width + 'px';
@@ -2847,7 +2922,7 @@ function renderTimeline() {
       const kind = c.type === 'text' ? 'text' : (m ? m.kind : c.type);
       const an = c.type === 'text' ? c.text.anim : null;
       const badges = [an && (an.in !== 'none' || an.out !== 'none') ? '✦' + [ANIM_IN[an.in]?.name, ANIM_OUT[an.out]?.name].filter(n => n && n !== '無').join('→') : '', c.speed !== 1 ? c.speed + '×' : '', c.fx && c.fx.look !== 'none' ? LOOKS[c.fx.look]?.name : '', c.volume === 0 && c.type !== 'text' ? '靜音' : '', c.text?.d3 ? '3D ' + D3_ANIMS[c.text.d3.anim] : '', c.mask ? '蒙版：' + MASK[c.mask.kind]?.name : '', c.key?.on ? '去背' : '', m?.music && !m.url ? '產生中…' : ''].filter(Boolean).join(' · ');
-      return `<div class="clip k-${kind} ${UI.sel === c.id ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
+      return `<div class="clip k-${kind} ${isSel(c.id) ? 'sel' : ''} ${!m && c.type !== 'text' ? 'offline' : ''}" data-cid="${c.id}" style="left:${x}px;width:${w}px;${bg}">
         ${frames}${c.fadeIn ? `<i class="fi" style="width:${Math.min(w, c.fadeIn * pps)}px"></i>` : ''}${c.fadeOut ? `<i class="fo" style="width:${Math.min(w, c.fadeOut * pps)}px"></i>` : ''}
         <div class="hd l"></div><span class="nm">${esc(clipName(c))}</span>${badges ? `<span class="bd">${esc(badges)}</span>` : ''}<div class="hd r"></div></div>`;
     }).join('');
@@ -3598,15 +3673,30 @@ $('inner').addEventListener('pointerdown', e => {
   }
   const el = e.target.closest('.clip');
   if (!el) {
-    if (UI.sel) { UI.sel = null; renderTimeline(); renderInspector(); }
-    if (e.target.closest('.trow')) seek(sec(Math.max(0, innerX() / UI.pps)));
+    // 空白處按住拖曳：拉出框選範圍；只點一下：取消選取並移動播放頭
+    if (e.target.closest('.trow') || e.target.id === 'rows') {
+      const r = $('inner').getBoundingClientRect();
+      drag = { mode: 'box', x0: e.clientX, y0: e.clientY, ox: r.left, oy: r.top, add: e.ctrlKey || e.metaKey || e.shiftKey, moved: false };
+      $('inner').setPointerCapture(e.pointerId);
+    }
     return;
   }
   const c = getClip(el.dataset.cid); if (!c) return;
+  if (e.ctrlKey || e.metaKey || e.shiftKey) {     // Ctrl／Shift＋點：加入或移出多選
+    if (UI.multi.size === 0 && UI.sel && UI.sel !== c.id) UI.multi.add(UI.sel);
+    if (UI.multi.has(c.id)) { UI.multi.delete(c.id); UI.sel = [...UI.multi].pop() ?? null; if (UI.multi.size < 2) UI.multi.clear(); }
+    else { UI.multi.add(c.id); UI.sel = c.id; }
+    renderTimeline(); renderInspector(); return;
+  }
   const mode = e.target.classList.contains('l') ? 'trimL' : e.target.classList.contains('r') ? 'trimR' : 'move';
   drag = { mode, id: c.id, el, x0: e.clientX, y0: e.clientY, s0: toSec(c.start), e0: toSec(clipEnd(c)), moved: false, track: c.track };
+  if (mode === 'move' && UI.multi.size > 1 && UI.multi.has(c.id)) {   // 拖曳多選中的片段：整組一起移動（只改時間）
+    drag.mode = 'group'; drag.items = [...UI.multi].map(getClip).filter(Boolean).map(x => ({ id: x.id, s0: toSec(x.start), el: document.querySelector(`.clip[data-cid="${x.id}"]`) }));
+    drag.min = Math.min(...drag.items.map(x => x.s0));
+  }
   $('inner').setPointerCapture(e.pointerId);
-  if (UI.sel !== c.id) { UI.sel = c.id; document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel'); renderInspector(); }
+  if (drag.mode !== 'group' && UI.sel !== c.id) { UI.sel = c.id; UI.multi.clear(); document.querySelectorAll('.clip.sel').forEach(x => x.classList.remove('sel')); el.classList.add('sel'); renderInspector(); }
+  else if (drag.mode !== 'group' && UI.multi.size) { UI.multi.clear(); renderTimeline(); }
 });
 $('inner').addEventListener('pointermove', e => {
   if (!drag) return;
@@ -3614,6 +3704,17 @@ $('inner').addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x0;
   if (!drag.moved && Math.abs(dx) < 3 && Math.abs(e.clientY - drag.y0) < 3) return;
   drag.moved = true;
+  if (drag.mode === 'box') {
+    let b = $('mbox'); if (!b) { b = document.createElement('div'); b.id = 'mbox'; $('inner').appendChild(b); }
+    const r = $('inner').getBoundingClientRect(), x1 = Math.min(drag.x0, e.clientX) - r.left, y1 = Math.min(drag.y0, e.clientY) - r.top;
+    Object.assign(b.style, { left: x1 + 'px', top: y1 + 'px', width: Math.abs(dx) + 'px', height: Math.abs(e.clientY - drag.y0) + 'px' });
+    drag.x1 = e.clientX; drag.y1 = e.clientY; return;
+  }
+  if (drag.mode === 'group') {
+    const ds = Math.max(-drag.min, dx / UI.pps); drag.ds = ds;
+    for (const it of drag.items) if (it.el) it.el.style.left = (it.s0 + ds) * UI.pps + 'px';
+    return;
+  }
   const c = getClip(drag.id), ds = dx / UI.pps, pps = UI.pps;
   if (drag.mode === 'move') {
     const len = drag.e0 - drag.s0;
@@ -3635,7 +3736,25 @@ $('inner').addEventListener('pointermove', e => {
   }
 });
 $('inner').addEventListener('pointerup', () => {
-  const d = drag; drag = null; if (!d || d.mode === 'scrub' || !d.moved) return;
+  const d = drag; drag = null; $('mbox')?.remove();
+  if (d && d.mode === 'box') {
+    if (!d.moved) {     // 只點一下空白處
+      if (UI.sel || UI.multi.size) { UI.sel = null; UI.multi.clear(); renderTimeline(); renderInspector(); }
+      seek(sec(Math.max(0, (d.x0 - d.ox) / UI.pps))); return;
+    }
+    const L = Math.min(d.x0, d.x1), R = Math.max(d.x0, d.x1), T = Math.min(d.y0, d.y1), B = Math.max(d.y0, d.y1);
+    const hit = [...document.querySelectorAll('#rows .clip')].filter(x => { const b = x.getBoundingClientRect(); return b.right > L && b.left < R && b.bottom > T && b.top < B; }).map(x => Number(x.dataset.cid));
+    if (!d.add) UI.multi.clear();
+    else if (UI.sel) UI.multi.add(UI.sel);
+    for (const id of hit) UI.multi.add(id);
+    const ids = [...UI.multi];
+    UI.sel = ids.length ? (hit[0] ?? ids[0]) : null; if (ids.length < 2) UI.multi.clear();
+    renderTimeline(); renderInspector();
+    if (ids.length > 1) toast(`已選取 ${ids.length} 個片段：按 Delete 刪除，或拖曳其中一個一起移動`);
+    return;
+  }
+  if (!d || d.mode === 'scrub' || !d.moved) return;
+  if (d.mode === 'group') { tryExec('timeline.moveMany', { clipIds: d.items.map(x => x.id), delta: d.ds || 0 }); return; }
   if (d.mode === 'move') tryExec('timeline.move', { clipId: d.id, start: d.ns ?? d.s0, track: d.track });
   else if (d.mode === 'trimL') tryExec('timeline.trim', { clipId: d.id, start: d.ns });
   else tryExec('timeline.trim', { clipId: d.id, end: d.ne });
@@ -3743,7 +3862,7 @@ $('askIn').addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftK
 $('bUndo').onclick = () => toast(undo()); $('bRedo').onclick = () => toast(redo());
 $('bPlay').onclick = togglePlay; $('bHome').onclick = () => seek(0); $('bEnd').onclick = () => seek(seqDur());
 $('bPrev').onclick = () => seek(UI.playhead - TPF); $('bNext').onclick = () => seek(UI.playhead + TPF);
-$('tSplit').onclick = () => tryExec('timeline.split', {}); $('tDel').onclick = () => tryExec('timeline.delete', {});
+$('tSplit').onclick = () => tryExec('timeline.split', {}); $('tDel').onclick = () => tryExec('timeline.delete', UI.multi.size > 1 ? { clipIds: [...UI.multi] } : {});
 $('tRip').onclick = () => tryExec('timeline.rippleDelete', {}); $('tDup').onclick = () => tryExec('timeline.duplicate', {});
 $('tGap').onclick = () => tryExec('timeline.closeGaps', {}); $('tText').onclick = () => { tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); };
 $('snap').onchange = e => { UI.snap = e.target.checked; };
@@ -3837,6 +3956,7 @@ document.addEventListener('keydown', e => {
   if (mod && k === 'y') { e.preventDefault(); toast(redo()); return; }
   if (mod && k === 's') { e.preventDefault(); projSave(e.shiftKey); return; }
   if (mod && k === 'o') { e.preventDefault(); openProjHub(); return; }
+  if (mod && k === 'a' && !binFocus) { e.preventDefault(); UI.multi = new Set(doc.clips.map(c => c.id)); UI.sel = doc.clips[0]?.id ?? null; if (UI.multi.size < 2) UI.multi.clear(); renderTimeline(); renderInspector(); toast(`已選取全部 ${doc.clips.length} 個片段`); return; }
   if (mod && k === 'n' && deskProj()) { e.preventDefault(); openProjHub(); $('pjNewName').focus(); return; }
   if (mod) return;
   const step = e.shiftKey ? 10 : 1;
@@ -3852,7 +3972,11 @@ document.addEventListener('keydown', e => {
     case 's': case 'S': tryExec('timeline.split', {}); break;
     case 'd': case 'D': tryExec('timeline.duplicate', {}); break;
     case 't': case 'T': tryExec('text.add', { text: '在這裡輸入字幕' }); switchTab('props'); break;
-    case 'Delete': case 'Backspace': e.preventDefault(); tryExec(e.shiftKey ? 'timeline.rippleDelete' : 'timeline.delete', {}); break;
+    case 'Delete': case 'Backspace': e.preventDefault();
+      if (binFocus && BinSel.size) { binRemove([...BinSel], false); break; }
+      if (UI.multi.size > 1) { tryExec('timeline.delete', { clipIds: [...UI.multi] }); break; }
+      tryExec(e.shiftKey ? 'timeline.rippleDelete' : 'timeline.delete', {}); break;
+    case 'Escape': if (UI.multi.size || BinSel.size) { UI.multi.clear(); BinSel.clear(); renderTimeline(); renderBin(); } break;
     case '+': case '=': UI.pps = Math.min(300, UI.pps * 1.25); $('zoom').value = UI.pps; renderTimeline(); break;
     case '-': case '_': UI.pps = Math.max(8, UI.pps / 1.25); $('zoom').value = UI.pps; renderTimeline(); break;
   }
@@ -3927,11 +4051,25 @@ const STT_WORKER = `import('${TF_URL}').then(({ pipeline, env }) => {
         postMessage({ type: 'ready' }); return;
       }
       if (m.type === 'translate') {
+        // 翻譯模型偶爾會「鬼打牆」一直重複同一段字：限制長度、禁止重複片語（不用 repetition_penalty，它會讓長句只翻一半），還是重複就把句子拆小重翻，最後只留不重複的前段
+        const units = x => (x.match(/[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]/g) || []).length + (x.match(/[A-Za-z\\u0900-\\u097f]+/g) || []).length;
+        // 中日韓文以字為單位（6 個字）、其他語言以單字為單位（4 個字）；同一段出現 3 次就算重複
+        const toks = x => /[\\u3040-\\u30ff\\u3400-\\u9fff\\uac00-\\ud7af]/.test(x) ? { t: Array.from(x.replace(/\\s+/g, '')), n: 6, j: '' } : { t: x.split(/\\s+/).filter(Boolean), n: 4, j: ' ' };
+        const loops = x => { const { t, n } = toks(x), seen = new Map(); for (let i = 0; i + n <= t.length; i++) { const g = t.slice(i, i + n).join('|'), c = (seen.get(g) || 0) + 1; if (c >= 3) return i; seen.set(g, c); } return -1; };
+        const bad = (t, o) => !o || loops(o) >= 0 || units(o) > units(t) * 2.5 + 8;
+        const gen = async (t, pen) => { const r = await tr[m.model](t, Object.assign(m.src ? { src_lang: m.src, tgt_lang: m.tgt } : {}, pen > 1.5 ? { max_new_tokens: Math.min(200, units(t) * 3 + 16), no_repeat_ngram_size: 3, num_beams: 3 } : { max_new_tokens: Math.min(200, units(t) * 3 + 16), no_repeat_ngram_size: 4 })); return (r[0] && r[0].translation_text || '').trim(); };
+        const parts = t => { const p = t.split(/(?<=[,;:，；：、])\\s*/).filter(x => x.trim()); if (p.length > 1) return p; const w = t.split(/\\s+/); return w.length > 3 ? [w.slice(0, w.length >> 1).join(' '), w.slice(w.length >> 1).join(' ')] : [t]; };
+        const trim = o => { const i = loops(o); if (i < 0) return o; const { t, j } = toks(o); return t.slice(0, Math.max(1, i)).join(j).replace(/[，,、\\s]+$/, ''); };
         const out = [];
         for (const t of m.texts) {
           if (!t.trim()) { out.push(''); continue; }
-          const r = await tr[m.model](t, m.src ? { src_lang: m.src, tgt_lang: m.tgt, max_new_tokens: 200 } : { max_new_tokens: 200 });
-          out.push((r[0] && r[0].translation_text || '').trim());
+          let o = await gen(t, 1.3);
+          if (bad(t, o) && parts(t).length > 1) {     // 重複或太長：改成一個子句一個子句翻，內容才不會漏掉
+            const os = [];
+            for (const p of parts(t)) { let q = await gen(p, 1.3); if (bad(p, q)) q = await gen(p, 1.8); os.push(trim(q)); }
+            o = os.filter(Boolean).join(/[\\u3040-\\u9fff]/.test(os.join('')) ? '' : ' ');
+          } else if (bad(t, o)) o = await gen(t, 1.8);
+          out.push(trim(o));
         }
         postMessage({ type: 'trout', texts: out }); return;
       }
@@ -4363,7 +4501,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.7.2';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
