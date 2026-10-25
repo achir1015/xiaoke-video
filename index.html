@@ -123,7 +123,9 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 #sttOv.reviewing .slist{flex:1 1 auto;max-height:none;min-height:60px}
 /* 語音轉文字：逐字稿核對清單 */
 .slist{display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px;background:var(--bg)}
-.slist .srow{display:flex;align-items:center;gap:6px}
+.slist .srow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.slist .srow input.tr{flex:0 0 calc(100% - 132px);margin-left:94px;font-size:12px;color:#9fd3ff}
+.trrow[hidden]{display:none!important}
 .slist .srow time{flex:none;font-family:var(--f-mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 4px;cursor:pointer;white-space:nowrap}
 .slist .srow time:hover{border-color:var(--accent);color:var(--fg)}
 .slist .srow input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--line);border-radius:4px;padding:4px 6px;color:var(--fg)}
@@ -499,6 +501,8 @@ textarea{resize:vertical;width:100%}
       <label for="sttEngine">辨識引擎</label><select id="sttEngine"></select>
       <label for="sttModel">模型</label><select id="sttModel"></select>
       <label for="sttTrack">放到字幕軌</label><select id="sttTrack"><option value="T1">T1 字幕 1（一般文字軌）</option><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option></select>
+      <label for="sttTr">翻譯成（雙語字幕）</label><select id="sttTr"></select>
+      <label for="sttTrTrack" class="trrow">翻譯字幕放到</label><div class="row2 trrow" style="gap:6px"><select id="sttTrTrack" style="flex:1"><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option><option value="T1">T1 字幕 1</option></select><select id="sttTrPos" style="flex:1"><option value="above">在原文上方</option><option value="below">在原文下方</option></select></div>
       <label for="sttMax">每段最多字數</label><input type="number" id="sttMax" value="16" min="6" max="60">
       <span></span><label><input type="checkbox" id="sttReplace" checked> 先清掉這條字幕軌上同一時段的舊字幕</label>
     </div>
@@ -507,7 +511,8 @@ textarea{resize:vertical;width:100%}
     <p class="note" id="sttStat"></p>
     <div id="sttReview" hidden>
       <div class="row2" style="align-items:center;margin:4px 0 6px;flex-wrap:wrap"><span class="bin-sec" style="margin:0;flex:1">逐字稿（可以直接改字、按 ✕ 刪句子、按時間試聽）</span>
-        <label>放到 <select id="sttTrackR"><option value="T1">T1（一般文字軌）</option><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option></select></label></div>
+        <label>放到 <select id="sttTrackR"><option value="T1">T1（一般文字軌）</option><option value="T2">T2 字幕 2</option><option value="T3">T3 字幕 3</option></select></label>
+        <label>翻譯 <select id="sttTrR"></select></label><button class="btn" id="sttTrGo" title="用目前的逐字稿（含你改過的字）重新翻譯">🌐 翻譯</button></div>
       <div class="slist" id="sttList"></div>
     </div>
     <div class="row2" style="justify-content:flex-end;margin-top:12px;flex-wrap:wrap">
@@ -975,7 +980,7 @@ defCmd('gen.set', '修改片頭／片尾文字', '{clipId?, title?, sub?(副標�
   if (p.accent != null && /^#[0-9a-f]{6}$/i.test(p.accent)) c.gen.accent = p.accent;
   return '已更新片頭／片尾文字';
 });
-defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1), group?(同一份逐字稿的代號，之後可一起改樣式), replace?:bool(先清掉這條軌上同一時間範圍的舊字幕)}', p => {
+defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒,text}], track?:"T1"|"T2"|"T3"(預設 T1), y?:字幕垂直位置(畫面高度%，預設下方 88), group?(同一份逐字稿的代號，之後可一起改樣式), replace?:bool(先清掉這條軌上同一時間範圍的舊字幕)}', p => {
   const track = TEXT_TRACKS.includes(p.track) ? p.track : 'T1';
   const items = (Array.isArray(p.items) ? p.items : []).filter(it => Number(it.end) > Number(it.start));
   if (!items.length) throw new Error('沒有字幕內容');
@@ -988,6 +993,7 @@ defCmd('captions.addMany', '一次加入多句字幕', '{items:[{start秒,end秒
     const s = sec(Number(it.start) || 0), e = sec(Number(it.end) || 0);
     const c = makeClip('text', track, s, e - s, { text: textDefaults(String(it.text || '')) });
     if (p.group) c.text.group = String(p.group);
+    if (p.y != null && Number.isFinite(Number(p.y))) c.text.y = clamp(Number(p.y), 0, 100);
     overwrite(track, c.start, clipEnd(c), c.id); doc.clips.push(c); first = first || c;
   }
   if (first) UI.sel = first.id;
@@ -3867,6 +3873,26 @@ const STT_LANGS = [
   { id: 'ko', name: '韓語', whisper: 'korean', stt: 'ko' },
   { id: 'hi', name: '印度語（印地語）', whisper: 'hindi', stt: 'hi' },
 ];
+// 翻譯（雙語字幕）：常見語言組合用小模型 opus-mt（約 115MB），其他組合用多語模型 NLLB-200（約 900MB）；都在本機執行
+const TR_LANGS = [
+  { id: '', name: '不翻譯' },
+  { id: 'zh-TW', name: '繁體中文（台灣）', base: 'zh', nllb: 'zho_Hant', conv: 'tw', cjk: true },
+  { id: 'zh-CN', name: '簡體中文', base: 'zh', nllb: 'zho_Hans', conv: 'cn', cjk: true },
+  { id: 'en', name: '英文 English', base: 'en', nllb: 'eng_Latn' },
+  { id: 'ja', name: '日文 日本語', base: 'ja', nllb: 'jpn_Jpan', cjk: true },
+  { id: 'ko', name: '韓文 한국어', base: 'ko', nllb: 'kor_Hang' },
+  { id: 'hi', name: '印地語 हिन्दी', base: 'hi', nllb: 'hin_Deva' },
+];
+const TR_SRC = { 'zh-TW': ['zh', 'zho_Hant'], 'zh-CN': ['zh', 'zho_Hans'], yue: ['zh', 'yue_Hant'], nan: ['zh', 'zho_Hant'], en: ['en', 'eng_Latn'], ja: ['ja', 'jpn_Jpan'], ko: ['ko', 'kor_Hang'], hi: ['hi', 'hin_Deva'] };
+const TR_OPUS = new Set(['en-zh', 'zh-en', 'ja-en', 'ko-en', 'hi-en', 'en-hi']);
+const TR_NLLB = 'Xenova/nllb-200-distilled-600M';
+function trRoute(srcId, T) {     // 翻譯步驟：直接一步、經過英文兩步、或用 NLLB
+  const [s, sn] = TR_SRC[srcId] || ['en', 'eng_Latn'], t = T.base;
+  if (s === t) return [];          // 同語言只做繁簡轉換
+  if (TR_OPUS.has(`${s}-${t}`)) return [{ model: `Xenova/opus-mt-${s}-${t}` }];
+  if (TR_OPUS.has(`${s}-en`) && TR_OPUS.has(`en-${t}`)) return [{ model: `Xenova/opus-mt-${s}-en` }, { model: `Xenova/opus-mt-en-${t}` }];
+  return [{ model: TR_NLLB, src: sn, tgt: T.nllb }];
+}
 const STT_MODELS = {
   browser: [['tiny', '小（下載約 40MB，最快，準確度普通）'], ['base', '中（約 75MB，快）'], ['small', '大（約 240MB，最準，速度約與片長相同）']],
   stt: [['tiny', 'tiny'], ['base', 'base'], ['small', 'small'], ['medium', 'medium'], ['large-v3-turbo', 'large-v3-turbo（建議）'], ['large-v3', 'large-v3（最準）']],
@@ -3878,9 +3904,24 @@ const STT_SR = 16000;
 const STT_WORKER = `import('${TF_URL}').then(({ pipeline, env }) => {
   env.allowLocalModels = false;
   let asr = null, key = '';
+  const tr = {};
+  const dl = files => p => { if (p.status === 'progress' && p.total) { files[p.file] = [p.loaded, p.total]; let a = 0, b = 0; for (const [x, y] of Object.values(files)) { a += x; b += y; } postMessage({ type: 'dl', loaded: a, total: b }); } };
   self.onmessage = async e => {
     const m = e.data;
     try {
+      if (m.type === 'trload') {
+        if (!tr[m.model]) tr[m.model] = await pipeline('translation', m.model, { device: 'wasm', dtype: 'q8', progress_callback: dl({}) });
+        postMessage({ type: 'ready' }); return;
+      }
+      if (m.type === 'translate') {
+        const out = [];
+        for (const t of m.texts) {
+          if (!t.trim()) { out.push(''); continue; }
+          const r = await tr[m.model](t, m.src ? { src_lang: m.src, tgt_lang: m.tgt, max_new_tokens: 200 } : { max_new_tokens: 200 });
+          out.push((r[0] && r[0].translation_text || '').trim());
+        }
+        postMessage({ type: 'trout', texts: out }); return;
+      }
       if (m.type === 'load') {
         if (asr && key === m.model) { postMessage({ type: 'ready' }); return; }
         asr = null; const files = {};
@@ -4029,6 +4070,42 @@ async function sttConvert(texts, conv) {
     return texts.map(t => f(t));
   } catch { toast('繁簡轉換工具載入失敗，先保留原本的文字'); return texts; }
 }
+// 翻譯一批句子（每 10 句回報一次進度，可以按「停止」）；翻成中文時順便轉成台灣繁體／簡體
+async function sttTranslate(texts, srcId, T, stat) {
+  let cur = texts.slice();
+  const steps = trRoute(srcId, T);
+  await sttWorker();
+  for (const [k, st] of steps.entries()) {
+    const tag = steps.length > 1 ? `（第 ${k + 1}/${steps.length} 步）` : '';
+    await sttCall({ type: 'trload', model: st.model }, null, d => stat(`下載翻譯模型${tag} ${Math.round((d.total ? d.loaded / d.total : 0) * 100)}%（只有第一次需要${st.model === TR_NLLB ? '，約 900MB' : '，約 115MB'}）`, d.total ? d.loaded / d.total : 0));
+    const out = [];
+    for (let i = 0; i < cur.length; i += 10) {
+      if (Stt.stop) throw new Error('已停止翻譯');
+      stat(`翻譯成${T.name}${tag}：${i}/${cur.length} 句`, i / cur.length);
+      out.push(...(await sttCall({ type: 'translate', model: st.model, texts: cur.slice(i, i + 10), src: st.src, tgt: st.tgt })).texts);
+    }
+    cur = out;
+  }
+  return sttConvert(cur, T.conv);
+}
+// 一整句的翻譯依原文切段的字數比例分到每一段（中日文依字數、其他依單字，盡量切在標點）
+function trSplit(text, weights, cjk) {
+  text = String(text || '').trim();
+  if (weights.length < 2) return [text];
+  const tok = cjk ? Array.from(text) : text.split(/\s+/).filter(Boolean), join = cjk ? '' : ' ';
+  const W = weights.reduce((a, b) => a + b, 0) || 1, cuts = [0]; let acc = 0;
+  for (let i = 0; i < weights.length - 1; i++) {
+    acc += weights[i];
+    // 每一段至少留一個字／詞給後面的段落；切點在估計位置附近找標點（不可跳到頭或尾）
+    const lo = cuts[cuts.length - 1] + 1, hi = tok.length - (weights.length - 1 - i);
+    let c = Math.min(hi, Math.max(lo, Math.round(tok.length * acc / W)));
+    const punct = k => k >= lo && k <= hi && /[，。、；：！？,.;:!?]$/.test(tok[k - 1] || '');
+    for (let d = 0; d <= (cjk ? 4 : 2); d++) { if (punct(c + d)) { c += d; break; } if (punct(c - d)) { c -= d; break; } }
+    cuts.push(lo > hi ? cuts[cuts.length - 1] : c);
+  }
+  cuts.push(tok.length);
+  return weights.map((_, i) => tok.slice(cuts[i], cuts[i + 1]).join(join).trim().replace(/^[，。、；：,.;:]+|[，、；：,;:]+$/g, ''));
+}
 // 一句太長就依標點、字數切成幾段，時間依字數比例分配
 function sttSplit(seg, max, cjk, lv) {
   const len = s => Array.from(s).length;
@@ -4081,6 +4158,10 @@ function openStt(selId) {
   sttModels();
   $('sttTrack').value = sttPref('track') || 'T1';
   $('sttMax').value = sttPref('max') || 16;
+  const trOpts = TR_LANGS.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  $('sttTr').innerHTML = trOpts; $('sttTrR').innerHTML = trOpts;
+  $('sttTr').value = $('sttTrR').value = sttPref('tr') || '';
+  $('sttTrTrack').value = sttPref('trtrack') || 'T2'; $('sttTrPos').value = sttPref('trpos') || 'above';
   sttNote();
   // 上次辨識完還沒套用的結果還留著：直接顯示，不用重新辨識
   if (Stt.result && !Stt.result.applied) {
@@ -4095,13 +4176,15 @@ const sttFmt = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).t
 function sttRenderReview() {
   const R = Stt.result;
   $('sttTrackR').value = $('sttTrack').value;
-  $('sttList').innerHTML = R.items.map((it, i) => `<div class="srow" data-i="${i}"><time title="從這裡播放試聽">${sttFmt(it.start)}–${sttFmt(it.end)}</time><input value="${esc(it.text)}" aria-label="第 ${i + 1} 句"><button title="刪掉這句">✕</button></div>`).join('');
+  $('sttList').innerHTML = R.items.map((it, i) => `<div class="srow" data-i="${i}"><time title="從這裡播放試聽">${sttFmt(it.start)}–${sttFmt(it.end)}</time><input value="${esc(it.text)}" aria-label="第 ${i + 1} 句"><button title="刪掉這句">✕</button>${R.tr ? `<input class="tr" value="${esc(it.tr || '')}" aria-label="第 ${i + 1} 句翻譯" placeholder="（翻譯）">` : ''}</div>`).join('');
+  $('sttTrR').value = R.tr || $('sttTr').value;
   $('sttReview').hidden = false; $('sttApply').hidden = false; $('sttApply').disabled = !R.items.length;
-  $('sttApply').textContent = `✓ 套用到 ${$('sttTrack').value}（${R.items.length} 句）`;
+  $('sttApply').textContent = sttApplyLabel();
   $('sttGo').classList.remove('primary'); $('sttGo').textContent = '重新辨識…';
   $('sttOv').classList.add('reviewing');
 }
-$('sttList').addEventListener('input', e => { const row = e.target.closest('[data-i]'); if (row && Stt.result) Stt.result.items[+row.dataset.i].text = e.target.value; });
+$('sttList').addEventListener('input', e => { const row = e.target.closest('[data-i]'); if (row && Stt.result) Stt.result.items[+row.dataset.i][e.target.classList.contains('tr') ? 'tr' : 'text'] = e.target.value; });
+const sttApplyLabel = () => { const R = Stt.result; return `✓ 套用到 ${$('sttTrack').value}${R?.tr ? ' ＋ 翻譯 ' + $('sttTrTrack').value : ''}（${R?.items.length || 0} 句）`; };
 $('sttList').addEventListener('click', e => {
   const row = e.target.closest('[data-i]'); if (!row || !Stt.result) return;
   const it = Stt.result.items[+row.dataset.i];
@@ -4114,11 +4197,16 @@ $('sttList').addEventListener('click', e => {
 // 把核對好的逐字稿放到選定的字幕軌（每句一段文字塊），確認真的放上去了才關閉
 function sttApply() {
   const R = Stt.result; if (!R || !R.items.length) return false;
-  const track = $('sttTrack').value, items = R.items.map(it => ({ ...it, text: it.text.trim() })).filter(it => it.text && it.end - it.start > .1);
+  const track = $('sttTrack').value, items = R.items.map(it => ({ ...it, text: it.text.trim(), tr: (it.tr || '').trim() })).filter(it => it.text && it.end - it.start > .1);
   if (!items.length) { toast('逐字稿是空的，沒有可以放的句子'); return false; }
+  const trTrack = $('sttTrTrack').value, trItems = R.tr ? items.filter(it => it.tr).map(it => ({ start: it.start, end: it.end, text: it.tr })) : [];
+  if (trItems.length && trTrack === track) { toast('翻譯字幕要放在另一條字幕軌，請換一條（例如 T2）'); $('sttStat').textContent = '原文和翻譯要放在不同的字幕軌，才能上下兩行同時顯示。'; return false; }
   try {
     const group = 'stt' + Date.now().toString(36);
-    exec('captions.addMany', { items, track, group, replace: $('sttReplace').checked });
+    // 雙語：兩條字幕軌一上一下（翻譯在原文上方或下方）
+    const up = POS_Y.bottom - 10, above = $('sttTrPos').value !== 'below';
+    exec('captions.addMany', { items, track, group, replace: $('sttReplace').checked, y: trItems.length ? (above ? POS_Y.bottom : up) : undefined });
+    if (trItems.length) { exec('captions.addMany', { items: trItems, track: trTrack, group: group + 'tr', replace: $('sttReplace').checked, y: above ? up : POS_Y.bottom }); sttPref('trtrack', trTrack); sttPref('trpos', $('sttTrPos').value); }
     const placed = doc.clips.filter(c => c.type === 'text' && c.text.group === group).sort((a, b) => a.start - b.start);
     if (!placed.length) throw new Error('字幕沒有放上時間軸');
     R.applied = true; R.track = track; sttPref('track', track);
@@ -4127,12 +4215,18 @@ function sttApply() {
     // 時間軸捲到第一段字幕
     const b = $('tlBody'), x = toSec(placed[0].start) * UI.pps; if (x < b.scrollLeft || x > b.scrollLeft + b.clientWidth - 120) b.scrollLeft = Math.max(0, x - 60);
     document.querySelector(`.clip[data-cid="${placed[0].id}"]`)?.scrollIntoView({ block: 'nearest' });
-    toast(`已把 ${placed.length} 句字幕放到 ${track}（${{ T1: '一般文字軌', T2: '字幕 2', T3: '字幕 3' }[track]}）。點任一段調好樣式，再按「套用到這份逐字稿」就能一次統一。`);
+    toast(`已把 ${placed.length} 句字幕放到 ${track}${trItems.length ? `，${trItems.length} 句翻譯放到 ${trTrack}` : `（${{ T1: '一般文字軌', T2: '字幕 2', T3: '字幕 3' }[track]}）`}。點任一段調好樣式，再按「套用到這份逐字稿」就能一次統一。`);
     // 桌面版：逐字稿另存一份 .srt 到工作資料夾 ASSETS\專案名稱
     if (wsApi()) {
       const f = t => { const ms = Math.round(toSec(t) * 1000); return `${String(Math.floor(ms / 3600000)).padStart(2, '0')}:${String(Math.floor(ms / 60000) % 60).padStart(2, '0')}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')},${String(ms % 1000).padStart(3, '0')}`; };
       const srt = placed.map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
       wsApi().ws_srt(doc.name, srt).then(p => toast(`已把 ${placed.length} 句字幕放到 ${track}，逐字稿另存在：${p}`) || refreshAssets()).catch(() => {});
+      if (trItems.length) {
+        const tp = doc.clips.filter(c => c.type === 'text' && c.text.group === group + 'tr').sort((a, b) => a.start - b.start);
+        const tsrt = tp.map((c, i) => `${i + 1}\n${f(c.start)} --> ${f(clipEnd(c))}\n${c.text.content}\n`).join('\n');
+        const T = TR_LANGS.find(t => t.id === R.tr);
+        wsApi().ws_srt(doc.name, tsrt, '翻譯_' + (T ? T.name.split(/[（ ]/)[0] : R.tr)).then(() => refreshAssets()).catch(() => {});
+      }
     }
     return true;
   } catch (e) { $('sttStat').textContent = '放到字幕軌失敗：' + (e?.message || e); toast('放到字幕軌失敗：' + (e?.message || e)); return false; }
@@ -4151,16 +4245,21 @@ function sttModels() {
   $('sttModel').value = list.some(([k]) => k === saved) ? saved : def;
 }
 function sttNote() {
-  const L = STT_LANGS.find(l => l.id === $('sttLang').value), eng = $('sttEngine').value;
-  $('sttNote').textContent = (L?.note ? '注意：' + L.note + ' ' : '') + (eng === 'stt'
+  const L = STT_LANGS.find(l => l.id === $('sttLang').value), eng = $('sttEngine').value, T = TR_LANGS.find(t => t.id === $('sttTr').value);
+  document.querySelectorAll('#sttOv .trrow').forEach(x => x.hidden = !T?.id);
+  let trn = '';
+  if (T?.id && L) { const r = trRoute(L.id, T); trn = r.length ? `翻譯：${r.some(x => x.model === TR_NLLB) ? '多語翻譯模型（第一次下載約 900MB，速度較慢）' : `小翻譯模型（第一次下載約 ${115 * r.length}MB${r.length > 1 ? '，經英文轉譯' : ''}）`}，原文與翻譯分放兩條字幕軌做雙語字幕。` : '翻譯：同一種語言只做繁簡轉換，放到第二條字幕軌。'; }
+  $('sttNote').textContent = (L?.note ? '注意：' + L.note + ' ' : '') + trn + (eng === 'stt'
     ? '請先執行 jianchang512/stt 的 start.exe（網址 http://127.0.0.1:9977），模型由 stt 自己下載與管理。'
     : '第一次使用會下載語音模型，之後不用網路也能辨識。說話內容只在你的電腦裡處理，不會上傳。');
 }
 async function runStt() {
   const src = Stt.sources.find(s => s.id === $('sttSrc').value), L = STT_LANGS.find(l => l.id === $('sttLang').value);
   const eng = $('sttEngine').value, model = $('sttModel').value, track = $('sttTrack').value, max = clamp(Number($('sttMax').value) || 16, 6, 60);
+  const T = TR_LANGS.find(t => t.id === $('sttTr').value);
   if (!src || !L) return;
-  sttPref('lang', L.id); sttPref('engine', eng); sttPref('model-' + eng, model); sttPref('track', track); sttPref('max', String(max));
+  if (T?.id && $('sttTrTrack').value === track) { $('sttStat').textContent = '翻譯字幕要放在和原文不同的字幕軌（例如原文 T1、翻譯 T2）。'; return; }
+  sttPref('tr', T?.id || ''); sttPref('lang', L.id); sttPref('engine', eng); sttPref('model-' + eng, model); sttPref('track', track); sttPref('max', String(max));
   Stt.busy = true; Stt.stop = false;
   $('sttGo').hidden = true; $('sttStop').hidden = false; $('sttClose').disabled = true; $('sttReview').hidden = true; $('sttApply').hidden = true; $('sttOv').classList.remove('reviewing');
   const stat = (msg, pct) => { $('sttStat').textContent = msg; if (pct != null) $('sttBar').style.width = (pct * 100).toFixed(1) + '%'; };
@@ -4181,18 +4280,24 @@ async function runStt() {
       // 過濾：空白、只有標點、聲音太小（模型在靜音時常會亂猜「謝謝觀看」之類的字）
       const good = sttAlign(lv, segs.filter(g => g.text && !/^[\s\p{P}\p{S}\d]*$/u.test(g.text) && sttLoud(lv, g.s, g.e) > .004)).map(g => sttSnap(lv, g));
       const texts = await sttConvert(good.map(g => g.text), L.conv);
-      const pieces = good.flatMap((g, i) => sttSplit({ s: g.s, e: g.e, text: texts[i] }, max, L.cjk, lv)).map(p => sttSnap(lv, p));
+      const trs = T?.id ? await sttTranslate(texts, L.id, T, (msg, pct) => stat(msg + tag, pct)) : null;   // 整句翻譯，再分到切開的每一段
+      const pieces = good.flatMap((g, i) => {
+        const ps = sttSplit({ s: g.s, e: g.e, text: texts[i] }, max, L.cjk, lv).map(p => sttSnap(lv, p));
+        if (!trs) return ps;
+        const parts = trSplit(trs[i], ps.map(p => Array.from(p.text).length), T.cjk);
+        return ps.map((p, j) => ({ ...p, tr: parts[j] || '' }));
+      });
       // 對位：媒體檔內的秒數 → 每個片段在時間軸上的位置（考慮修剪起點與速度）
       for (const c of cs) {
         const a0 = toSec(c.inPt), a1 = a0 + toSec(c.dur) * c.speed;
-        for (const g of pieces) { const s = Math.max(g.s, a0), e = Math.min(g.e, a1); if (e - s < .15) continue; items.push({ start: toSec(c.start) + (s - a0) / c.speed, end: toSec(c.start) + (e - a0) / c.speed, text: g.text }); }
+        for (const g of pieces) { const s = Math.max(g.s, a0), e = Math.min(g.e, a1); if (e - s < .15) continue; items.push({ start: toSec(c.start) + (s - a0) / c.speed, end: toSec(c.start) + (e - a0) / c.speed, text: g.text, tr: g.tr }); }
       }
     }
     if (Stt.stop && !items.length) { stat('已停止。', 0); return; }
     if (!items.length) throw new Error('沒有辨識到說話內容（可以換大一點的模型，或確認語言選對了）');
     items.sort((x, y) => x.start - y.start);
     for (let i = 0; i < items.length - 1; i++) items[i].end = Math.min(items[i].end, items[i + 1].start);   // 字幕不重疊
-    Stt.result = { items: items.filter(it => it.end - it.start > .1), track, applied: false };
+    Stt.result = { items: items.filter(it => it.end - it.start > .1), track, applied: false, tr: T?.id || '' };
     sttRenderReview();
     stat(`辨識完成，共 ${Stt.result.items.length} 句${Stt.stop ? '（已停止，只有辨識完成的部分）' : ''}。請核對下面的逐字稿，沒問題就按「✓ 套用到字幕軌」放到 ${track}。`, 1);
   } catch (e) { stat('語音轉文字失敗：' + (e?.message || e)); }
@@ -4200,13 +4305,31 @@ async function runStt() {
 }
 $('tStt').onclick = () => openStt(UI.sel);
 $('sttEngine').onchange = () => { sttModels(); sttNote(); };
+$('sttTr').onchange = () => { $('sttTrR').value = $('sttTr').value; if ($('sttTr').value && $('sttTrTrack').value === $('sttTrack').value) $('sttTrTrack').value = $('sttTrack').value === 'T2' ? 'T3' : 'T2'; sttNote(); };
+$('sttTrR').onchange = () => { $('sttTr').value = $('sttTrR').value; sttNote(); };
+$('sttTrTrack').onchange = () => { if (Stt.result && !Stt.result.applied) $('sttApply').textContent = sttApplyLabel(); };
+// 核對時按「🌐 翻譯」：用目前（可能改過字）的逐字稿逐句翻譯
+$('sttTrGo').onclick = async () => {
+  const R = Stt.result, L = STT_LANGS.find(l => l.id === $('sttLang').value), T = TR_LANGS.find(t => t.id === $('sttTrR').value);
+  if (!R || Stt.busy) return;
+  if (!T?.id) { R.tr = ''; sttRenderReview(); return; }
+  Stt.busy = true; Stt.stop = false; $('sttTrGo').disabled = $('sttApply').disabled = true; $('sttStop').hidden = false;
+  const stat = (msg, pct) => { $('sttStat').textContent = msg; if (pct != null) $('sttBar').style.width = (pct * 100).toFixed(1) + '%'; };
+  try {
+    const out = await sttTranslate(R.items.map(it => it.text), L.id, T, stat);
+    R.items.forEach((it, i) => it.tr = out[i] || ''); R.tr = T.id; sttPref('tr', T.id);
+    if ($('sttTrTrack').value === $('sttTrack').value) $('sttTrTrack').value = $('sttTrack').value === 'T2' ? 'T3' : 'T2';
+    stat(`翻譯完成（${T.name}）。核對後按「✓ 套用」，原文放 ${$('sttTrack').value}、翻譯放 ${$('sttTrTrack').value}。`, 1);
+  } catch (e) { stat('翻譯失敗：' + (e?.message || e)); }
+  finally { Stt.busy = false; $('sttTrGo').disabled = false; $('sttStop').hidden = true; sttRenderReview(); }
+};
 $('sttLang').onchange = () => { const L = STT_LANGS.find(l => l.id === $('sttLang').value); $('sttMax').value = L?.cjk ? 16 : 42; sttNote(); };
 // 核對中按「重新辨識…」：先把設定打開讓使用者調整，再按一次才開始
 $('sttGo').onclick = () => {
   if ($('sttOv').classList.contains('reviewing')) { $('sttOv').classList.remove('reviewing'); $('sttReview').hidden = true; $('sttGo').textContent = '開始重新辨識'; $('sttGo').classList.add('primary'); return; }
   runStt();
 };
-const sttTrackSync = v => { $('sttTrack').value = v; $('sttTrackR').value = v; if (Stt.result && !Stt.result.applied) $('sttApply').textContent = `✓ 套用到 ${v}（${Stt.result.items.length} 句）`; };
+const sttTrackSync = v => { $('sttTrack').value = v; $('sttTrackR').value = v; if (Stt.result && !Stt.result.applied) $('sttApply').textContent = sttApplyLabel(); };
 $('sttTrack').onchange = e => sttTrackSync(e.target.value);
 $('sttTrackR').onchange = e => sttTrackSync(e.target.value);
 $('sttStop').onclick = () => { Stt.stop = true; $('sttStat').textContent = '停止中（等目前這一段辨識完）…'; };
@@ -4215,7 +4338,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);

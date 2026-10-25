@@ -401,9 +401,10 @@ class DesktopBridge:
     def ws_inbox(self):
         return self._ws.media_files(self._ws.ensure() / "INBOX")
 
-    def ws_srt(self, name: str, text: str):
+    def ws_srt(self, name: str, text: str, kind: str = "逐字稿"):
         safe = "".join(c for c in str(name) if c not in '\\/:*?"<>|').strip() or "逐字稿"
-        p = self._ws.assets_dir(name) / f"{safe}_逐字稿.srt"
+        kind = "".join(c for c in str(kind) if c not in '\\/:*?"<>|').strip() or "逐字稿"
+        p = self._ws.assets_dir(name) / f"{safe}_{kind}.srt"
         p.write_text(text, encoding="utf-8-sig")
         return str(p)
 
@@ -1029,7 +1030,9 @@ class SelfTest:
     JS_STT = r"""
     (async () => { try { const t0 = performance.now(); await sttWorker(); await sttCall({ type: 'load', model: 'tiny' });
         const a = new Float32Array(32000); for (let i = 0; i < a.length; i++) a[i] = Math.sin(i / 8) * .1;
-        const r = await sttCall({ type: 'run', audio: a, language: 'chinese' }, [a.buffer]); window.__stt = { ok: true, ms: Math.round(performance.now() - t0), chunks: r.chunks.length };
+        const r = await sttCall({ type: 'run', audio: a, language: 'chinese' }, [a.buffer]);
+        const tr = await sttTranslate(['Once upon a time, there were three little pigs.'], 'en', TR_LANGS.find(x => x.id === 'zh-TW'), () => {});   // 翻譯（雙語字幕）
+        window.__stt = { ok: /[一-鿿]/.test(tr[0] || ''), ms: Math.round(performance.now() - t0), chunks: r.chunks.length, translation: tr[0] };
       } catch (e) { window.__stt = { ok: false, msg: String(e && e.message || e) }; } })(); 'started'
     """
 
