@@ -124,7 +124,7 @@ kbd{font-family:var(--f-mono);font-size:10px;color:var(--muted);border:1px solid
 /* 語音轉文字：逐字稿核對清單 */
 .slist{display:flex;flex-direction:column;gap:3px;max-height:34vh;overflow:auto;border:1px solid var(--line);border-radius:6px;padding:4px;background:var(--bg)}
 .slist .srow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;flex-shrink:0}
-.slist .srow input.tr{flex:0 0 calc(100% - 132px);margin-left:94px;font-size:12px;color:#9fd3ff}
+.slist .srow input.srtr{flex:0 0 calc(100% - 132px);margin-left:94px;font-size:12px;color:#9fd3ff}
 .trrow[hidden]{display:none!important}
 .slist .srow time{flex:none;font-family:var(--f-mono);font-size:11px;color:var(--muted);background:transparent;border:1px solid transparent;border-radius:4px;padding:3px 4px;cursor:pointer;white-space:nowrap}
 .slist .srow time:hover{border-color:var(--accent);color:var(--fg)}
@@ -3886,8 +3886,21 @@ const TR_LANGS = [
 const TR_SRC = { 'zh-TW': ['zh', 'zho_Hant'], 'zh-CN': ['zh', 'zho_Hans'], yue: ['zh', 'yue_Hant'], nan: ['zh', 'zho_Hant'], en: ['en', 'eng_Latn'], ja: ['ja', 'jpn_Jpan'], ko: ['ko', 'kor_Hang'], hi: ['hi', 'hin_Deva'] };
 const TR_OPUS = new Set(['en-zh', 'zh-en', 'ja-en', 'ko-en', 'hi-en', 'en-hi']);
 const TR_NLLB = 'Xenova/nllb-200-distilled-600M';
-function trRoute(srcId, T) {     // 翻譯步驟：直接一步、經過英文兩步、或用 NLLB
-  const [s, sn] = TR_SRC[srcId] || ['en', 'eng_Latn'], t = T.base;
+const TR_BASE = { zh: 'zho_Hant', en: 'eng_Latn', ja: 'jpn_Jpan', ko: 'kor_Hang', hi: 'hin_Deva' };
+// 依文字判斷這一句實際是哪種語言（影片說英文、辨識語言卻選了中文時，也能正確翻譯）
+function trDetect(t, fallback) {
+  t = String(t || '');
+  if (/[\u3040-\u30ff]/.test(t)) return 'ja';
+  if (/[\uac00-\ud7af]/.test(t)) return 'ko';
+  if (/[\u0900-\u097f]/.test(t)) return 'hi';
+  const han = (t.match(/[\u3400-\u9fff]/g) || []).length, latin = (t.match(/[A-Za-z]+/g) || []).length;
+  if (han && han >= latin) return 'zh';
+  if (latin) return 'en';
+  return fallback;
+}
+function trRoute(srcId, T, base) {     // 翻譯步驟：直接一步、經過英文兩步、或用 NLLB
+  const src = TR_SRC[srcId] || ['en', 'eng_Latn'];
+  const [s, sn] = base && base !== src[0] ? [base, TR_BASE[base]] : src, t = T.base;
   if (s === t) return [];          // 同語言只做繁簡轉換
   if (TR_OPUS.has(`${s}-${t}`)) return [{ model: `Xenova/opus-mt-${s}-${t}` }];
   if (TR_OPUS.has(`${s}-en`) && TR_OPUS.has(`en-${t}`)) return [{ model: `Xenova/opus-mt-${s}-en` }, { model: `Xenova/opus-mt-en-${t}` }];
@@ -4072,21 +4085,27 @@ async function sttConvert(texts, conv) {
 }
 // 翻譯一批句子（每 10 句回報一次進度，可以按「停止」）；翻成中文時順便轉成台灣繁體／簡體
 async function sttTranslate(texts, srcId, T, stat) {
-  let cur = texts.slice();
-  const steps = trRoute(srcId, T);
-  await sttWorker();
-  for (const [k, st] of steps.entries()) {
-    const tag = steps.length > 1 ? `（第 ${k + 1}/${steps.length} 步）` : '';
-    await sttCall({ type: 'trload', model: st.model }, null, d => stat(`下載翻譯模型${tag} ${Math.round((d.total ? d.loaded / d.total : 0) * 100)}%（只有第一次需要${st.model === TR_NLLB ? '，約 900MB' : '，約 115MB'}）`, d.total ? d.loaded / d.total : 0));
-    const out = [];
-    for (let i = 0; i < cur.length; i += 10) {
-      if (Stt.stop) throw new Error('已停止翻譯');
-      stat(`翻譯成${T.name}${tag}：${i}/${cur.length} 句`, i / cur.length);
-      out.push(...(await sttCall({ type: 'translate', model: st.model, texts: cur.slice(i, i + 10), src: st.src, tgt: st.tgt })).texts);
+  // 每句先判斷實際語言，同一種語言的句子一起翻；已經是目標語言的句子不翻（只做繁簡轉換）
+  const fb = (TR_SRC[srcId] || ['en'])[0], det = texts.map(t => trDetect(t, fb)), out = texts.slice();
+  for (const base of new Set(det)) {
+    const idx = det.map((d, i) => d === base ? i : -1).filter(i => i >= 0);
+    let cur = idx.map(i => texts[i]);
+    const steps = trRoute(srcId, T, base);
+    if (steps.length) await sttWorker();
+    for (const [k, st] of steps.entries()) {
+      const tag = steps.length > 1 ? `（第 ${k + 1}/${steps.length} 步）` : '';
+      await sttCall({ type: 'trload', model: st.model }, null, d => stat(`下載翻譯模型${tag} ${Math.round((d.total ? d.loaded / d.total : 0) * 100)}%（只有第一次需要${st.model === TR_NLLB ? '，約 900MB' : '，約 115MB'}）`, d.total ? d.loaded / d.total : 0));
+      const res = [];
+      for (let i = 0; i < cur.length; i += 10) {
+        if (Stt.stop) throw new Error('已停止翻譯');
+        stat(`翻譯成${T.name}${tag}：${i}/${cur.length} 句`, i / cur.length);
+        res.push(...(await sttCall({ type: 'translate', model: st.model, texts: cur.slice(i, i + 10), src: st.src, tgt: st.tgt })).texts);
+      }
+      cur = res;
     }
-    cur = out;
+    idx.forEach((i, k) => { out[i] = cur[k]; });
   }
-  return sttConvert(cur, T.conv);
+  return sttConvert(out, T.conv);
 }
 // 一整句的翻譯依原文切段的字數比例分到每一段（中日文依字數、其他依單字，盡量切在標點）
 function trSplit(text, weights, cjk) {
@@ -4111,7 +4130,8 @@ function sttSplit(seg, max, cjk, lv) {
   const len = s => Array.from(s).length;
   const tidy = s => s.trim().replace(cjk ? /[，。、；：,.;:]+$/ : /[,;:]+$/, '');
   let t = seg.text.trim();
-  if (cjk) t = t.replace(/\s+/g, '').replace(/,/g, '，').replace(/\?/g, '？').replace(/!/g, '！').replace(/;/g, '；').replace(/:/g, '：');
+  // 中日文：只去掉中文字旁邊的空白，英文單字之間的空白保留（例如「巨星 Passive Voice」）
+  if (cjk) t = t.replace(/\s+/g, ' ').replace(/(?<=[\u3000-\u9fff\uff00-\uffef])\s+|\s+(?=[\u3000-\u9fff\uff00-\uffef])/g, '').replace(/,(?!\d)/g, '，').replace(/\?/g, '？').replace(/!/g, '！').replace(/;/g, '；').replace(/:(?!\d)/g, '：');
   else t = t.replace(/\s+/g, ' ');
   if (len(t) <= max) return [{ s: seg.s, e: seg.e, text: tidy(t) }];
   const parts = t.match(cjk ? /[^，。！？、；：]+[，。！？、；：]*/g : /[^,.!?;:]+[,.!?;:]*\s*/g) || [t], out = [];
@@ -4176,14 +4196,14 @@ const sttFmt = t => `${String(Math.floor(t / 60)).padStart(2, '0')}:${(t % 60).t
 function sttRenderReview() {
   const R = Stt.result;
   $('sttTrackR').value = $('sttTrack').value;
-  $('sttList').innerHTML = R.items.map((it, i) => `<div class="srow" data-i="${i}"><time title="從這裡播放試聽">${sttFmt(it.start)}–${sttFmt(it.end)}</time><input value="${esc(it.text)}" aria-label="第 ${i + 1} 句"><button title="刪掉這句">✕</button>${R.tr ? `<input class="tr" value="${esc(it.tr || '')}" aria-label="第 ${i + 1} 句翻譯" placeholder="（翻譯）">` : ''}</div>`).join('');
+  $('sttList').innerHTML = R.items.map((it, i) => `<div class="srow" data-i="${i}"><time title="從這裡播放試聽">${sttFmt(it.start)}–${sttFmt(it.end)}</time><input value="${esc(it.text)}" aria-label="第 ${i + 1} 句"><button title="刪掉這句">✕</button>${R.tr ? `<input class="srtr" value="${esc(it.tr || '')}" aria-label="第 ${i + 1} 句翻譯" placeholder="（翻譯）">` : ''}</div>`).join('');
   $('sttTrR').value = R.tr || $('sttTr').value;
   $('sttReview').hidden = false; $('sttApply').hidden = false; $('sttApply').disabled = !R.items.length;
   $('sttApply').textContent = sttApplyLabel();
   $('sttGo').classList.remove('primary'); $('sttGo').textContent = '重新辨識…';
   $('sttOv').classList.add('reviewing');
 }
-$('sttList').addEventListener('input', e => { const row = e.target.closest('[data-i]'); if (row && Stt.result) Stt.result.items[+row.dataset.i][e.target.classList.contains('tr') ? 'tr' : 'text'] = e.target.value; });
+$('sttList').addEventListener('input', e => { const row = e.target.closest('[data-i]'); if (row && Stt.result) Stt.result.items[+row.dataset.i][e.target.classList.contains('srtr') ? 'tr' : 'text'] = e.target.value; });
 const sttApplyLabel = () => { const R = Stt.result; return `✓ 套用到 ${$('sttTrack').value}${R?.tr ? ' ＋ 翻譯 ' + $('sttTrTrack').value : ''}（${R?.items.length || 0} 句）`; };
 $('sttList').addEventListener('click', e => {
   const row = e.target.closest('[data-i]'); if (!row || !Stt.result) return;
@@ -4282,7 +4302,8 @@ async function runStt() {
       const texts = await sttConvert(good.map(g => g.text), L.conv);
       const trs = T?.id ? await sttTranslate(texts, L.id, T, (msg, pct) => stat(msg + tag, pct)) : null;   // 整句翻譯，再分到切開的每一段
       const pieces = good.flatMap((g, i) => {
-        const ps = sttSplit({ s: g.s, e: g.e, text: texts[i] }, max, L.cjk, lv).map(p => sttSnap(lv, p));
+        const cj = L.cjk && ['zh', 'ja'].includes(trDetect(texts[i], 'zh'));   // 選了中文、這句卻是英文：用英文的切法（保留空白、字數放寬）
+        const ps = sttSplit({ s: g.s, e: g.e, text: texts[i] }, cj || !L.cjk ? max : Math.round(max * 2.6), cj, lv).map(p => sttSnap(lv, p));
         if (!trs) return ps;
         const parts = trSplit(trs[i], ps.map(p => Array.from(p.text).length), T.cjk);
         return ps.map((p, j) => ({ ...p, tr: parts[j] || '' }));
@@ -4299,7 +4320,11 @@ async function runStt() {
     for (let i = 0; i < items.length - 1; i++) items[i].end = Math.min(items[i].end, items[i + 1].start);   // 字幕不重疊
     Stt.result = { items: items.filter(it => it.end - it.start > .1), track, applied: false, tr: T?.id || '' };
     sttRenderReview();
-    stat(`辨識完成，共 ${Stt.result.items.length} 句${Stt.stop ? '（已停止，只有辨識完成的部分）' : ''}。請核對下面的逐字稿，沒問題就按「✓ 套用到字幕軌」放到 ${track}。`, 1);
+    // 辨識出來的文字和選的語言不一樣（例如英文影片選了繁體語）：提醒改選，辨識會更準
+    const want = (TR_SRC[L.id] || ['en'])[0], cnt = {}; for (const it of Stt.result.items) { const d = trDetect(it.text, want); cnt[d] = (cnt[d] || 0) + 1; }
+    const top = Object.entries(cnt).sort((a, b) => b[1] - a[1])[0], NAMES = { zh: '中文', en: '英文（請選「美語」）', ja: '日文（請選「日語」）', ko: '韓文（請選「韓語」）', hi: '印地語' };
+    const hint = top && top[0] !== want && top[1] > Stt.result.items.length / 2 ? `　提醒：內容看起來是${NAMES[top[0]]}，和選的語言不同，改選正確的語言重新辨識會更準。` : '';
+    stat(`辨識完成，共 ${Stt.result.items.length} 句${Stt.stop ? '（已停止，只有辨識完成的部分）' : ''}。請核對下面的逐字稿，沒問題就按「✓ 套用到字幕軌」放到 ${track}。${hint}`, 1);
   } catch (e) { stat('語音轉文字失敗：' + (e?.message || e)); }
   finally { Stt.busy = false; $('sttGo').hidden = false; $('sttGo').textContent = $('sttOv').classList.contains('reviewing') ? '重新辨識…' : '重新辨識'; $('sttStop').hidden = true; $('sttClose').disabled = false; }
 }
@@ -4338,7 +4363,7 @@ $('sttApply').onclick = sttApply;
 
 // ---------- 版本更新 ----------
 // 線上版：比對網站上的 version.json，有新版就重新載入；Windows 版：向 Python 查 GitHub Releases，下載安裝程式自動更新
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 const desktopApi = () => (window.pywebview && window.pywebview.api && window.pywebview.api.check_update) ? window.pywebview.api : null;
 function verCmp(a, b) {
   const p = v => String(v || '').replace(/^v/i, '').split('.').map(n => parseInt(n, 10) || 0), x = p(a), y = p(b);
