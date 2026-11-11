@@ -1,0 +1,5 @@
+web/
+vendor-cache/
+*.xcodeproj/
+XiaokeVideo/Info.plist
+Mac/Info.plist

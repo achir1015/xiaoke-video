@@ -3223,7 +3223,24 @@ async function desktopSave(filename, data) {
   toast('已儲存到：' + end.path);
   return end.path;
 }
+// iPad／Mac App Store 版：資料分段交給 App，App 再讓使用者選存到哪裡
+const appCall = (cmd, ...args) => window.webkit.messageHandlers.xkv.postMessage({ cmd, args });
+async function appSave(filename, data) {
+  const blob = data instanceof Blob ? data : new Blob([data]);
+  const begin = await appCall('begin_save', filename);
+  if (!begin || begin.status !== 'ok') throw new Error(begin?.message || '無法開始存檔');
+  const CH = 2 * 1024 * 1024;
+  for (let o = 0; o < blob.size; o += CH) {
+    await appCall('write_chunk', begin.token, await blobToB64(blob.slice(o, o + CH)));
+    if (blob.size > CH) toast(`準備檔案… ${Math.min(100, Math.round((o + CH) / blob.size * 100))}%`);
+  }
+  const end = await appCall('end_save', begin.token);
+  if (end?.status === 'ok') { toast('已儲存：' + end.path); return end.path; }
+  if (end?.status === 'declined') { toast('已取消儲存'); return false; }
+  throw new Error(end?.message || '儲存失敗');
+}
 async function saveFile(filename, data) {
+  if (window.XiaokeAppStore) { try { return await appSave(filename, data); } catch (e) { toast('儲存失敗：' + (e?.message || e)); return false; } }
   if (window.pywebview && window.pywebview.api && window.pywebview.api.begin_save) {
     try { return await desktopSave(filename, data); } catch (e) { toast('儲存失敗：' + (e?.message || e)); return false; }
   }
@@ -4034,12 +4051,15 @@ const STT_MODELS = {
   browser: [['tiny', '小（下載約 40MB，最快，準確度普通）'], ['base', '中（約 75MB，快）'], ['small', '大（約 240MB，最準，速度約與片長相同）']],
   stt: [['tiny', 'tiny'], ['base', 'base'], ['small', 'small'], ['medium', 'medium'], ['large-v3-turbo', 'large-v3-turbo（建議）'], ['large-v3', 'large-v3（最準）']],
 };
-const TF_URL = 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
-const OPENCC_URL = 'https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/esm/full.js';
+// App Store 版（iPad／Mac）：程式庫都放在 App 裡的 vendor/，只有模型資料第一次使用時下載
+const VENDOR = window.XiaokeAppStore ? location.origin + '/vendor/' : '';
+const TF_URL = VENDOR ? VENDOR + 'transformers.min.js' : 'https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.8.1';
+const OPENCC_URL = VENDOR ? VENDOR + 'opencc.js' : 'https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/esm/full.js';
 const STT_SR = 16000;
 // 背景執行緒：載入模型、辨識一段（最長 30 秒）聲音，回傳每句的起訖秒數與文字
 const STT_WORKER = `import('${TF_URL}').then(({ pipeline, env }) => {
-  env.allowLocalModels = false;
+  env.allowLocalModels = false;${VENDOR ? `
+  env.backends.onnx.wasm.wasmPaths = '${VENDOR}';` : ''}
   let asr = null, key = '';
   const tr = {};
   const dl = files => p => { if (p.status === 'progress' && p.total) { files[p.file] = [p.loaded, p.total]; let a = 0, b = 0; for (const [x, y] of Object.values(files)) { a += x; b += y; } postMessage({ type: 'dl', loaded: a, total: b }); } };
@@ -4303,7 +4323,10 @@ function sttSources(selId) {
   for (const tr of ['V1', 'V2', 'V3', 'V4', 'A1', 'A2']) { const cl = clipsOn(tr).filter(audible); if (cl.length) out.push({ id: 'track:' + tr, label: `整條 ${tr} 軌（${cl.length} 段）`, clips: cl.map(x => x.id) }); }
   return out;
 }
+// Intel 晶片的 Mac：macOS 網頁引擎執行語音／翻譯模型（onnxruntime WebAssembly）會整個當掉（WebKit 的 x86 錯誤），先停用並說明
+const sttBlocked = () => window.XiaokeAppStore === 'Mac' && window.XiaokeCPU === 'x86_64';
 function openStt(selId) {
+  if (sttBlocked()) { alert('語音轉文字與翻譯需要 Apple 晶片（M 系列）的 Mac。\n\n這台 Mac 是 Intel 處理器，macOS 內建的網頁引擎目前無法執行語音辨識模型。其他剪輯、匯出功能都可以正常使用；需要自動字幕時，可以用 iPad 版、Windows 版或線上版產生後存成 SRT，再用「匯入 SRT」放進來。'); return; }
   if (Stt.busy) { $('sttOv').hidden = false; return; }
   Stt.sources = sttSources(selId ?? UI.sel);
   if (!Stt.sources.length) { toast('先把有聲音的影片或音訊放上時間軸，再點選那個片段'); return; }
@@ -4511,6 +4534,7 @@ function verCmp(a, b) {
 const Upd = { info: null, checking: false, notified: false };
 const updAvailable = () => Upd.info?.status === 'ok' && verCmp(Upd.info.latest, Upd.info.current || APP_VERSION) > 0;
 async function checkUpdate(manual = false) {
+  if (window.XiaokeAppStore) { if (manual) renderUpd(); return; }   // App Store 版：更新由 App Store 處理
   if (Upd.checking) return; Upd.checking = true;
   if (manual) renderUpd('正在檢查…');
   try {
@@ -4529,7 +4553,8 @@ async function checkUpdate(manual = false) {
 function renderUpd(msg) {
   const i = Upd.info, api = desktopApi(), cur = (i && i.current) || APP_VERSION;
   const mac = i?.platform === 'mac';
-  let h = `<p>目前版本：<b>v${esc(cur)}</b>（${api ? (mac ? 'Mac 桌面版' : 'Windows 11 桌面版') : '線上版'}）</p>`;
+  let h = `<p>目前版本：<b>v${esc(cur)}</b>（${window.XiaokeAppStore ? window.XiaokeAppStore + ' App Store 版' : api ? (mac ? 'Mac 桌面版' : 'Windows 11 桌面版') : '線上版'}）</p>`;
+  if (window.XiaokeAppStore) { $('updBody').innerHTML = h + '<p class="note">新版本會由 App Store 自動更新；也可以打開 App Store →「更新項目」手動更新。</p>'; $('updGo').hidden = true; $('updCheck').hidden = true; return; }
   if (msg) h += `<p class="note">${esc(msg)}</p>`;
   else if (!i) h += '<p class="note">還沒檢查過更新。</p>';
   else if (i.status !== 'ok') h += `<p class="note">檢查更新失敗：${esc(i.message || '')}。請確認網路連線後再試一次。</p>`;

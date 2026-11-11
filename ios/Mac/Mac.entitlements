@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Mac App Store 版（Mac Catalyst）必須開沙盒：
+     network.server：App 裡的小型網頁伺服器（只聽 127.0.0.1）
+     network.client：第一次使用語音轉文字、翻譯時下載模型
+     files.user-selected：使用者在開啟／存檔視窗選的素材與專案檔 -->
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+</dict>
+</plist>
