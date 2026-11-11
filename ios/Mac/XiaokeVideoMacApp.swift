@@ -75,6 +75,9 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
     }
 
     func webView(_ w: WKWebView, didFinish n: WKNavigation!) {
+        if selfTesting, ProcessInfo.processInfo.environment["XK_SELFTEST"] == "shots", let win = w.window {
+            win.setContentSize(NSSize(width: 1280, height: 800))   // App Store 截圖尺寸 2560×1600
+        }
         if selfTesting && !testStarted { testStarted = true; w.evaluateJavaScript(selfTestScript(ProcessInfo.processInfo.environment["XK_SELFTEST"] ?? "all")) { _, _ in } }
     }
 
@@ -168,6 +171,14 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
             replyHandler(true, nil)
         case "st":
             note(s(0)); replyHandler(true, nil)
+        case "snap":      // 截圖（App Store 用）：網頁畫面存到 Documents
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            view.takeSnapshot(with: nil) { img, _ in
+                if let t = img?.tiffRepresentation, let r = NSBitmapImageRep(data: t), let d = r.representation(using: .png, properties: [:]) {
+                    try? d.write(to: docs.appendingPathComponent(s(0) + ".png"))
+                }
+                replyHandler(true, nil)
+            }
         case "st_done":
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             try? s(0).write(to: docs.appendingPathComponent("selftest.txt"), atomically: true, encoding: .utf8)

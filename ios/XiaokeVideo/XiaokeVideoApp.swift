@@ -165,6 +165,12 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
         case "st":        // 自我測試：目前做到哪一步
             note(s(0))
             replyHandler(true, nil)
+        case "snap":      // 截圖（App Store 用）：網頁畫面存到 Documents
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            view.takeSnapshot(with: nil) { img, _ in
+                if let d = img?.pngData() { try? d.write(to: docs.appendingPathComponent(s(0) + ".png")) }
+                replyHandler(true, nil)
+            }
         case "st_done":   // 自我測試：最後結果與畫面
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             view.takeSnapshot(with: nil) { img, _ in
