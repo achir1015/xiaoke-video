@@ -39,9 +39,11 @@ https://github.com/user-attachments/assets/ee6193a8-c1f0-4b6f-aead-5e0764343530
 |---|---|
 | Windows 11 | 到 [Releases](https://github.com/achir1015/xiaoke-video/releases) 下載 `XiaokeVideo-Setup-版本.exe`，詳見 [windows/README.md](windows/README.md) |
 | Mac（MacBook Pro／Air 等） | 到 [Releases](https://github.com/achir1015/xiaoke-video/releases) 下載 `.dmg`：M 系列晶片選 `AppleSilicon`、Intel 處理器選 `Intel`，把 App 拖到「應用程式」；第一次開啟按右鍵 →「打開」（未付費簽章），說明在 [windows/MAC_README.txt](windows/MAC_README.txt) |
-| iPad／iPad Pro | 用 Safari 開啟 https://achir1015.github.io/xiaoke-video/ → 分享 →「加入主畫面」，全螢幕開啟、沒網路也能用；可以用手指拖曳時間軸片段，匯出的影片在「檔案」App |
+| iPad／iPad Pro | **[App Store 免費下載](https://apps.apple.com/tw/app/id6833281318)**（iPadOS 17 以上，由 App Store 自動更新）；可以用手指拖曳時間軸片段，匯出的影片在「檔案」App。也可以用 Safari 開啟 https://achir1015.github.io/xiaoke-video/ → 分享 →「加入主畫面」當網頁版用 |
 
-三個版本功能相同，都有版本更新：右上角版本按鈕出現紅點時按「立即更新」。
+<img src="icons/appstore-qr.png" width="180" alt="iPad 掃描打開 App Store">（iPad 相機掃描就會打開 App Store）
+
+各版本功能相同。Windows、Mac 與網頁版的更新方式：右上角版本按鈕出現紅點時按「立即更新」；App Store 版由 App Store 自動更新。
 
 ## 使用方式
 
