@@ -8,7 +8,7 @@ rm -f build/upload.done
 exec > >(tee build/upload.log) 2>&1
 DIR="$HOME/Library/Developer/Xcode/Archives"
 R=ok
-for TAG in iPad Mac; do
+for TAG in ${XK_ONLY:-iPad Mac}; do
   A=$(ls -td "$DIR"/*/XiaokeVideo-$TAG-*.xcarchive | head -1)
   echo "== $TAG: $A"
   rm -rf "build/upload-$TAG"

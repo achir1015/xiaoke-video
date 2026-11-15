@@ -19,9 +19,9 @@ arc() {   # $1 scheme  $2 destination  $3 名稱
     -destination "$2" -archivePath "$DIR/XiaokeVideo-$3-$STAMP.xcarchive" \
     -allowProvisioningUpdates archive | grep -E 'error:|warning: .*sign|ARCHIVE' || fail
 }
-arc XiaokeVideo "generic/platform=iOS" iPad
-arc XiaokeVideoMac "generic/platform=macOS" Mac
+# 只封存其中一版：XK_ONLY=Mac 或 XK_ONLY=iPad
+[ "$XK_ONLY" != "Mac" ] && arc XiaokeVideo "generic/platform=iOS" iPad
+[ "$XK_ONLY" != "iPad" ] && arc XiaokeVideoMac "generic/platform=macOS" Mac
 lipo -archs "$DIR/XiaokeVideo-Mac-$STAMP.xcarchive/Products/Applications/"*.app/Contents/MacOS/* || true
 ls -d "$DIR"/XiaokeVideo-*-$STAMP.xcarchive
-open -a Xcode; sleep 3; open "$DIR/XiaokeVideo-Mac-$STAMP.xcarchive"   # 打開 Organizer 的封存清單
 echo "ok" > build/appstore.done

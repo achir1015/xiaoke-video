@@ -57,6 +57,13 @@ func selfTestScript(_ only: String) -> String {
               UI.sel = v.id; exec('color.set', { clipId: v.id, look: 'teal' }); switchBinTab('text'); switchTab('color'); seek(sec(12.5)); renderAll(); await wait(2500);
               await snap('shot3-color');
             }
+            if (only === 'vendor') {   // 程式庫載入檢查（xiaoke:// 自訂網址）：背景執行緒 import、讀 wasm、儲存空間
+              R.secure = window.isSecureContext; R.origin = location.origin;
+              R.idb = await new Promise(r => { try { const q = indexedDB.open('xk-test', 1); q.onsuccess = () => r(true); q.onerror = () => r(false); } catch (e) { r('err ' + e); } });
+              const w = new Worker(URL.createObjectURL(new Blob([`import('${TF_URL}').then(async m => { const b = await (await fetch('${VENDOR}ort-wasm-simd-threaded.jsep.wasm')).arrayBuffer(); const o = await import('${OPENCC_URL}'); postMessage('ok pipeline=' + typeof m.pipeline + ' wasm=' + b.byteLength + ' opencc=' + typeof o.Converter); }).catch(e => postMessage('err ' + e));`], { type: 'text/javascript' })), { type: 'module' });
+              R.worker = await new Promise(r => { w.onmessage = e => r(e.data); w.onerror = e => r('onerror ' + e.message); setTimeout(() => r('timeout'), 30000); });
+              R.hf = await fetch('https://huggingface.co/onnx-community/whisper-tiny/resolve/main/config.json').then(r => r.status).catch(e => 'err ' + e);
+            }
             if (only === 'diag') {   // 匯出診斷：錄影功能、支援格式、播放有沒有前進
               R.mr = typeof MediaRecorder; R.cap = typeof HTMLCanvasElement.prototype.captureStream;
               R.mimes = typeof MediaRecorder !== 'undefined' ? ['video/mp4;codecs=avc1,mp4a', 'video/mp4', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4;codecs=hvc1'].filter(m => MediaRecorder.isTypeSupported(m)) : [];
@@ -65,7 +72,7 @@ func selfTestScript(_ only: String) -> String {
               R.ph = ph; R.stat = $('exStat') ? $('exStat').textContent : ''; R.ac = window.ac ? ac.state : (typeof AC !== 'undefined' ? AC.state : '?');
               R.hidden = document.hidden; R.vis = document.visibilityState;
             }
-            if (only !== 'stt' && only !== 'diag' && only !== 'shots') {
+            if (only !== 'stt' && only !== 'diag' && only !== 'shots' && only !== 'vendor') {
             openExport(); const e0 = Date.now(); startExport().catch(e => st('export error ' + e));
             while (!recBlob && Date.now() - e0 < 150000) await new Promise(r => setTimeout(r, 300));
             R.exportBytes = recBlob ? recBlob.size : 0; R.exportType = recBlob ? recBlob.type : ''; R.exportMs = Date.now() - e0;
@@ -75,7 +82,7 @@ func selfTestScript(_ only: String) -> String {
             R.projSaved = await saveFile('selftest.xkp', projSerialize());
             await st('saved ' + R.saved + ' ' + R.projSaved);
             }
-            if (only !== 'export' && only !== 'diag' && only !== 'shots' && !sttBlocked()) {
+            if (only !== 'export' && only !== 'diag' && only !== 'shots' && only !== 'vendor' && !sttBlocked()) {
             const t1 = Date.now();
             await sttWorker(); await sttCall({ type: 'load', model: 'tiny' });
             const a = new Float32Array(32000); for (let i = 0; i < a.length; i++) a[i] = Math.sin(i / 8) * .1;
