@@ -17,6 +17,8 @@ get https://cdn.jsdelivr.net/npm/opencc-js@1.4.2/dist/esm/full.js opencc.js
 V=$(python3 -c 'import json;print(json.load(open("../version.json"))["version"])')
 # 版本號：1.7.2 → build 10702（每次送審都要比上一次大）
 B=$(python3 -c "a,b,c=(int(x) for x in '$V'.split('.'));print(a*10000+b*100+c)")
+# 同一版重新送審（例如只改 Mac 版）：XK_BUILD=2 bash sync.sh → build 10702.2
+[ -n "$XK_BUILD" ] && B="$B.$XK_BUILD"
 sed -i '' "s/MARKETING_VERSION: \".*\"/MARKETING_VERSION: \"$V\"/; s/CURRENT_PROJECT_VERSION: \".*\"/CURRENT_PROJECT_VERSION: \"$B\"/" project.yml
 XG=$(command -v xcodegen || echo /usr/local/bin/xcodegen)
 "$XG" generate --quiet

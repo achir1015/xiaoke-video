@@ -4,12 +4,11 @@ import WebKit
 import UniformTypeIdentifiers
 
 /// 小柯影音剪輯助手 — Mac App Store 版（原生 macOS App，M 系列與 Intel 晶片都能執行）
-/// 用 macOS 的 WKWebView 開啟 App 內建的剪輯程式（和 iPad 版、線上版同一份 index.html），由 LocalServer 在 127.0.0.1 提供。
+/// 用 macOS 的 WKWebView 開啟 App 內建的剪輯程式（和 iPad 版、線上版同一份 index.html），透過自訂網址 xiaoke:// 直接讀取（不開網路伺服器）。
 /// （不用 Mac Catalyst：Catalyst 的網頁引擎沒有影片錄製 MediaRecorder，無法匯出影片）
 @main
 struct XiaokeVideoMacApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var delegate
-    init() { LocalServer.shared.start() }
 
     var body: some Scene {
         WindowGroup("小柯影音剪輯助手") {
@@ -53,6 +52,7 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
         let cfg = WKWebViewConfiguration()
         cfg.mediaTypesRequiringUserActionForPlayback = []
         cfg.websiteDataStore = .default()
+        cfg.setURLSchemeHandler(AppSchemeHandler(), forURLScheme: AppSchemeHandler.scheme)
         let shim = WKUserScript(source: """
             window.XiaokeAppStore = 'Mac'; window.XiaokeCPU = '\(Web.cpu)';
             (function () {
@@ -71,7 +71,7 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
         view.uiDelegate = self
         view.underPageBackgroundColor = NSColor(red: 0.067, green: 0.078, blue: 0.09, alpha: 1)
         if #available(macOS 13.3, *) { view.isInspectable = true }
-        view.load(URLRequest(url: LocalServer.shared.url))
+        view.load(URLRequest(url: AppSchemeHandler.start))
     }
 
     func webView(_ w: WKWebView, didFinish n: WKNavigation!) {
@@ -83,7 +83,7 @@ final class Web: NSObject, WKScriptMessageHandlerWithReply, WKNavigationDelegate
 
     // 外部連結用預設瀏覽器開
     func webView(_ w: WKWebView, decidePolicyFor a: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-        if let u = a.request.url, u.host != "127.0.0.1", u.scheme?.hasPrefix("http") == true, a.targetFrame?.isMainFrame != false {
+        if let u = a.request.url, u.scheme?.hasPrefix("http") == true, a.targetFrame?.isMainFrame != false {
             NSWorkspace.shared.open(u); decisionHandler(.cancel); return
         }
         decisionHandler(.allow)

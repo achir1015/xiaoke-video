@@ -67,7 +67,7 @@ targets:
     platform: macOS
     sources:
       - path: Mac
-      - path: Shared
+      - path: Shared/SelfTestScript.swift   # Mac 版不用 LocalServer（不開網路伺服器）
       - path: web
         type: folder
     settings:
